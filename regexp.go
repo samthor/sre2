@@ -58,8 +58,8 @@ func (r *sregexp) next(curr *obitset, next *obitset, rune int) (r_curr *obitset,
 }
 
 func (r *sregexp) run(str string) bool {
-  curr := NewStateSet(64, 64)
-  next := NewStateSet(64, 64)
+  curr := NewStateSet(len(r.prog), len(r.prog))
+  next := NewStateSet(len(r.prog), len(r.prog))
   r.addstate(curr, 0)
 
   for _, rune := range str {
