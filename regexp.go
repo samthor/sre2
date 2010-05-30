@@ -6,18 +6,18 @@ import (
 )
 
 const (
-  kSplit = iota // proceed down out & out1
-  kRune         // if match rune, proceed down out
-  kCall         // if matcher passes, proceed down out
-  kMatch        // success state!
+  kSplit = iota         // proceed down out & out1
+  kRune                 // if match rune, proceed down out
+  kCall                 // if matcher passes, proceed down out
+  kMatch                // success state!
 )
 
 type State struct {
-  me int    // index of this state
-  mode byte // mode (as above)
-  out int   // to next state index
-  out1 int  // to alt next state index (only for kSplit)
-  rune int  // rune to match (only for kRune)
+  me int                // index of this state
+  mode byte             // mode (as above)
+  out int               // to next state index
+  out1 int              // to alt next state index (only for kSplit)
+  rune int              // rune to match (only for kRune)
   matcher func(rune int) bool   // matcher method (for kCall)
 }
 

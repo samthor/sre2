@@ -16,7 +16,7 @@ type StateSet interface {
  * Size is the maximum number of states that may be saved.
  */
 func NewStateSet(states int, size int) *obitset {
-  bwords := (states+32)>>5 // TODO: we just use lower 32 bits, even if int is int64
+  bwords := (states+31)>>5 // TODO: we just use lower 32 bits, even if int is int64
   return &obitset{bwords, make([]int, bwords), make([]int, size), 0, size}
 }
 
