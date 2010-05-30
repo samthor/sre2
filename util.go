@@ -1,35 +1,48 @@
 
 package main
 
-/** Ordered bitset. */
-type obitset struct {
-  bwords int
-  bits []int
-  result []int
-  pos int
+/**
+ * Provides a storage mechanism for an ordered set of states (i.e., int).
+ */
+type StateSet interface {
+  Put(v int) bool       // put the given int into set, false if successful
+  Get() []int           // get the entire set of states
+  Length() int          // shorthand for len(Get())
+  Clear()               // clear the state set
 }
 
 /**
  * Create a new ordered bitset. States is the maximum state # that may be saved.
  * Size is the maximum number of states that may be saved.
  */
-func NewOBitSet(states int, size int) *obitset {
+func NewStateSet(states int, size int) *obitset {
   bwords := (states+32)>>5 // TODO: we just use lower 32 bits, even if int is int64
-  return &obitset{bwords, make([]int, bwords), make([]int, size), 0}
+  return &obitset{bwords, make([]int, bwords), make([]int, size), 0, size}
 }
 
-/** Puts the given value into the obitset. Returns false if success, true if already exists. */
-func (o *obitset) Put(v int) bool {
-  shift := v & 31
+type obitset struct {
+  bwords int
+  bits []int
+  result []int
+  pos int
+  size int
+}
 
-  // grah can't convert int to byte easily *hatehatehate*
-  var value byte
-  for j := 0; j < shift; j++ {
-    value += 1
+func (o *obitset) Put(v int) bool {
+  index := v>>5
+  value := 1<<(byte(v) & 31)
+
+  // sanity-check
+  if index > o.bwords {
+    panic("can't insert, would overrun buffer")
+  }
+  if o.pos == o.size {
+    panic("can't insert, no more storage")
   }
 
-  if (o.bits[v>>5] & (1 << value)) == 0 {
-    o.bits[v>>5] |= (1 << value)
+  // look for value set on bits[index].
+  if (o.bits[index] & value) == 0 {
+    o.bits[index] |= value
     o.result[o.pos] = v
     o.pos += 1
     return false
@@ -37,20 +50,17 @@ func (o *obitset) Put(v int) bool {
   return true
 }
 
-/** Clear obitset. */
+func (o *obitset) Get() []int {
+  return o.result[0:o.pos]
+}
+
+func (o *obitset) Length() int {
+  return o.pos
+}
+
 func (o *obitset) Clear() {
   for i := 0; i < o.bwords; i++ {
     o.bits[i] = 0
   }
   o.pos = 0
-}
-
-/** Get contents of obitset as slice. */
-func (o *obitset) Contents() []int {
-  return o.result[0:o.pos]
-}
-
-/** Length of results. */
-func (o *obitset) Length() int {
-  return o.pos
 }

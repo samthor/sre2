@@ -48,7 +48,7 @@ func (r *sregexp) addstate(o *obitset, s int) {
 }
 
 func (r *sregexp) next(curr *obitset, next *obitset, rune int) (r_curr *obitset, r_next *obitset) {
-  for _, st := range curr.Contents() {
+  for _, st := range curr.Get() {
     if r.prog[st].match(rune) {
       r.addstate(next, r.prog[st].out)
     }
@@ -58,8 +58,8 @@ func (r *sregexp) next(curr *obitset, next *obitset, rune int) (r_curr *obitset,
 }
 
 func (r *sregexp) run(str string) bool {
-  curr := NewOBitSet(64, 64)
-  next := NewOBitSet(64, 64)
+  curr := NewStateSet(64, 64)
+  next := NewStateSet(64, 64)
   r.addstate(curr, 0)
 
   for _, rune := range str {
@@ -72,7 +72,7 @@ func (r *sregexp) run(str string) bool {
     curr, next = r.next(curr, next, rune)
   }
 
-  for _, st := range curr.Contents() {
+  for _, st := range curr.Get() {
     if r.prog[st].mode == kMatch {
       return true
     }
