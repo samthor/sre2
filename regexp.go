@@ -61,7 +61,7 @@ func (r *sregexp) run(str string) bool {
   curr := NewOBitSet(64, 64)
   next := NewOBitSet(64, 64)
   r.addstate(curr, 0)
-  
+
   for _, rune := range str {
     //fmt.Fprintf(os.Stderr, "%c\t%b\n", rune, curr.bits[0])
     if curr.Length() == 0 {

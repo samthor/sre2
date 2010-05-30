@@ -27,12 +27,12 @@ func main() {
     // use new regexp impl
     r := parse(*re)
     fmt.Fprintln(os.Stderr, "r", r)
-  
+
     result := false
     for i := 0; i < *runs; i++ {
       result = r.run(*s)
     }
-  
+
     fmt.Fprintln(os.Stderr, "new result", result)
   } else {
     // use old regexp impl
