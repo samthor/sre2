@@ -36,7 +36,7 @@ type sregexp struct {
   prog []State
 }
 
-func (r *sregexp) addstate(o *obitset, s int) {
+func (r *sregexp) addstate(o *StateSet, s int) {
   if s < 0 || o.Put(s) {
     return // invalid, or already have this state
   }
@@ -47,7 +47,7 @@ func (r *sregexp) addstate(o *obitset, s int) {
   }
 }
 
-func (r *sregexp) next(curr *obitset, next *obitset, rune int) (r_curr *obitset, r_next *obitset) {
+func (r *sregexp) next(curr *StateSet, next *StateSet, rune int) (r_curr *StateSet, r_next *StateSet) {
   for _, st := range curr.Get() {
     if r.prog[st].match(rune) {
       r.addstate(next, r.prog[st].out)
