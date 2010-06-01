@@ -18,7 +18,9 @@ type StateSet interface {
 func NewStateSet(states int, size int) *StateSet {
   bwords := (states+31)>>5 // TODO: we just use lower 32 bits, even if int is int64
 
-  // TODO: this feels moderately contrived
+  // NOTE: I'd like to just return &obitset(...) here, but Go does not seem to be
+  // happy to cast this as a StateSet. It's also not happy for me to return a cast
+  // to "*StateSet(...)", so this expansion is required.
   var ret StateSet
   ret = StateSet(&obitset{bwords, make([]int, bwords), make([]int, size), 0, size})
   return &ret
