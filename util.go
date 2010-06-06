@@ -8,7 +8,7 @@ type StateSet interface {
   Put(v int) bool       // put the given int into set, false if successful
   Get() []int           // get the entire set of states
   Length() int          // shorthand for len(Get())
-  Clear() int           // clear the state set
+  Clear()               // clear the state set
 }
 
 /**
@@ -64,11 +64,9 @@ func (o *obitset) Length() int {
   return o.pos
 }
 
-func (o *obitset) Clear() int {
+func (o *obitset) Clear() {
   for i := 0; i < o.bwords; i++ {
     o.bits[i] = 0
   }
-  ret := o.pos
   o.pos = 0
-  return ret
 }
