@@ -10,6 +10,8 @@ import (
 
 const (
   kSplit = iota         // proceed down out & out1
+  kAltBegin             // begin of alt section, i.e. '('
+  kAltEnd               // end of alt section, i.e. ')'
   kRune                 // if match rune, proceed down out
   kCall                 // if matcher passes, proceed down out
   kMatch                // success state!
@@ -61,8 +63,8 @@ type parser struct {
 }
 
 /*
- * Generic matcher, implements definitions of above consts. Does not match
- * kSplit/kMatch (i.e., an instr which does not consume a rune).
+ * Generic matcher for consuming instr instances (i.e. kRune/kCall). Does not
+ * match anything else.
  */
 func (s *instr) match(rune int) bool {
   if s.mode == kRune {
