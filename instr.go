@@ -60,6 +60,19 @@ type parser struct {
   inst int
 }
 
+/*
+ * Generic matcher, implements definitions of above consts. Does not match
+ * kSplit/kMatch (i.e., an instr which does not consume a rune).
+ */
+func (s *instr) match(rune int) bool {
+  if s.mode == kRune {
+    return s.rune == rune || s.rune == -1
+  } else if s.mode == kCall {
+    return s.matcher(rune)
+  }
+  return false
+}
+
 /**
  * Generate a new pre-indexed instr.
  */

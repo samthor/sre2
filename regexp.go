@@ -1,16 +1,6 @@
 
 package main
 
-/* generic matcher, implements definitions of above consts */
-func (s *instr) match(rune int) bool {
-  if s.mode == kRune {
-    return s.rune == rune || s.rune == -1
-  } else if s.mode == kCall {
-    return s.matcher(rune)
-  }
-  return false
-}
-
 /* regexp - currently just a list of states */
 type sregexp struct {
   prog []*instr
