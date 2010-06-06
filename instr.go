@@ -26,7 +26,8 @@ type instr struct {
   out *instr            // next instr to process
   out1 *instr           // alt next instr (for kSplit)
   rune int              // rune to match (kRune)
-  matcher func(rune int) bool   // matcher method (for kCall)  
+  matcher func(rune int) bool   // matcher method (for kCall)
+  alt int               // identifier of alt branch (for kAlt{Begin,End})
 }
 
 /**
@@ -44,6 +45,10 @@ func (i *instr) str() string {
     if i.out1 != nil {
       out += fmt.Sprintf(" out1=%d", i.out1.idx)
     }
+  case kAltBegin:
+    str += fmt.Sprintf(" kAltBegin alt=%d", i.alt)
+  case kAltEnd:
+    str += fmt.Sprintf(" kAltEnd alt=%d", i.alt)
   case kRune:
     str += fmt.Sprintf(" kRune rune=%c", i.rune)
   case kCall:
@@ -60,6 +65,7 @@ type parser struct {
   pos int
   prog []*instr
   inst int
+  altpos int
 }
 
 /*
@@ -82,7 +88,7 @@ func (p *parser) instr() *instr {
   if p.inst == len(p.prog) {
     panic("overflow instr buffer")
   }
-  i := &instr{p.inst, kSplit, nil, nil, -1, nil}
+  i := &instr{p.inst, kSplit, nil, nil, -1, nil, -1}
   p.prog[p.inst] = i
   p.inst += 1
   return i
@@ -116,11 +122,16 @@ func (p *parser) out(from *instr, to *instr) {
 }
 
 func (p *parser) alt() (start *instr, end *instr) {
+  altpos := p.altpos
+  p.altpos += 1
+
   if p.ch != '(' {
     panic("alt must start with '('")
   }
 
   end = p.instr() // shared end state for alt
+  end.mode = kAltEnd
+  end.alt = altpos
 
   p.nextc()
   b_start, b_end := p.regexp()
@@ -143,7 +154,11 @@ func (p *parser) alt() (start *instr, end *instr) {
     panic("alt must end with ')'")
   }
 
-  return start, end
+  alt_begin := p.instr()
+  alt_begin.mode = kAltBegin
+  alt_begin.alt = altpos
+  p.out(alt_begin, start)
+  return alt_begin, end
 }
 
 func (p *parser) term() (start *instr, end *instr) {
@@ -222,7 +237,7 @@ func (p *parser) closure() (start *instr, end *instr) {
     if p.ch == '}' {
       // fixed expansion
       count, _ := strconv.Atoi(count_str)
-      panic(fmt.Sprintf("can't expand to: %d", count))
+      panic(fmt.Sprintf("can't yet expand to: %d", count))
     } else if p.ch == ',' {
       panic("can't handle anything but {n}")
     } else {
@@ -232,8 +247,11 @@ func (p *parser) closure() (start *instr, end *instr) {
   return start, end
 }
 
+/**
+ * Match a regexp (defined as [closure]*) from parser, until either: EOF, |, or
+ * ) is encountered.
+ */
 func (p *parser) regexp() (start *instr, end *instr) {
-  // supports [closure]*
   start = p.instr()
   curr := start
 
@@ -315,8 +333,8 @@ func cleanup(prog []*instr) []*instr {
 /**
  * Generates a simple straight-forward NFA.
  */
-func Parse(src string) (prog []*instr) {
-  p := parser{src, -1, 0, make([]*instr, 128), 0}
+func Parse(src string) (r *sregexp) {
+  p := parser{src, -1, 0, make([]*instr, 128), 0, 0}
   begin := p.instr()
   match := p.instr()
   match.mode = kMatch
@@ -334,5 +352,5 @@ func Parse(src string) (prog []*instr) {
   result := p.prog[0:end.idx+1]
   result = cleanup(result)
 
-  return result
+  return &sregexp{result, p.altpos}
 }

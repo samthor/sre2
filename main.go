@@ -25,27 +25,30 @@ func main() {
 
   if !*mode {
     // use new regexp impl
-    prog := Parse(*re)
+    r := Parse(*re)
 
-    for i := 0; i < len(prog); i++ {
-      fmt.Fprintln(os.Stderr, i, prog[i].str())
+    for i := 0; i < len(r.prog); i++ {
+      fmt.Fprintln(os.Stderr, i, r.prog[i].str())
     }
-
-    r := &sregexp{prog}
 
     result := false
+    var alt []pair
     for i := 0; i < *runs; i++ {
-      result = r.run(*s)
+      result, alt = r.run(*s)
     }
 
-    fmt.Fprintln(os.Stderr, "new result", result)
+    fmt.Fprintln(os.Stderr, "new result", result, "alt", alt)
   } else {
     // use old regexp impl
     r := regexp.MustCompile(*re)
-    result := false
+    var result []int
     for i := 0; i < *runs; i++ {
-      result = r.MatchString(*s)
+      result = r.ExecuteString(*s)
     }
-    fmt.Fprintln(os.Stderr, "std result", result)
+    success := (len(result) != 0)
+    if success {
+      result = result[2:]
+    }
+    fmt.Fprintln(os.Stderr, "std result", success, "alt", result)
   }
 }
