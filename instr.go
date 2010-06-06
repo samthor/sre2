@@ -3,6 +3,8 @@ package main
 
 import (
   "fmt"
+  "strconv"
+  "unicode"
   "utf8"
 )
 
@@ -25,6 +27,9 @@ type instr struct {
   matcher func(rune int) bool   // matcher method (for kCall)  
 }
 
+/**
+ * String-representatin of an individual instruction.
+ */
 func (i *instr) str() string {
   str := fmt.Sprintf("{%d", i.idx)
   out := ""
@@ -95,6 +100,37 @@ func (p *parser) out(from *instr, to *instr) {
   }
 }
 
+func (p *parser) alt() (start *instr, end *instr) {
+  if p.ch != '(' {
+    panic("alt must start with '('")
+  }
+
+  end = p.instr() // shared end state for alt
+
+  p.nextc()
+  b_start, b_end := p.regexp()
+  start = b_start
+  p.out(b_end, end)
+
+  for p.ch == '|' {
+    split := p.instr()
+    p.out(split, b_start)
+
+    p.nextc()
+    b_start, b_end = p.regexp()
+    p.out(split, b_start)
+    p.out(b_end, end)
+
+    start = split
+  }
+
+  if p.ch != ')' {
+    panic("alt must end with ')'")
+  }
+
+  return start, end
+}
+
 func (p *parser) term() (start *instr, end *instr) {
   start = p.instr()
   end = start
@@ -107,7 +143,7 @@ func (p *parser) term() (start *instr, end *instr) {
   case ')', '}', ']':
     panic("unexpected close element")
   case '(':
-    panic("not yet supported: (")
+    start, end = p.alt()
   case '[':
     panic("not yet supported: [")
   case '$':
@@ -159,7 +195,24 @@ func (p *parser) closure() (start *instr, end *instr) {
     p.out(end, start)
     p.nextc()
   case '{':
-    panic("unsupported: {")
+    count_str := ""
+    p.nextc()
+    for unicode.IsDigit(p.ch) {
+      count_str += fmt.Sprintf("%c", p.ch)
+      p.nextc()
+    }
+    if len(count_str) == 0 {
+      panic("{ must be followed by digit")
+    }
+    if p.ch == '}' {
+      // fixed expansion
+      count, _ := strconv.Atoi(count_str)
+      panic(fmt.Sprintf("can't expand to: %d", count))
+    } else if p.ch == ',' {
+      panic("can't handle anything but {n}")
+    } else {
+      panic("unexpected char in {}")
+    }
   }
   return start, end
 }
@@ -169,7 +222,10 @@ func (p *parser) regexp() (start *instr, end *instr) {
   start = p.instr()
   curr := start
 
-  for p.ch != -1 {
+  for {
+    if p.ch == -1 || p.ch == '|' || p.ch == ')' {
+      break
+    }
     s, e := p.closure()
     p.out(curr, s)
     curr = e
@@ -191,6 +247,10 @@ func Parse(src string) (prog []*instr) {
 
   p.nextc()
   start, end := p.regexp()
+
+  if p.nextc() != -1 {
+    panic("could not consume all of regexp!")
+  }
 
   p.out(begin, start)
   p.out(end, match)
