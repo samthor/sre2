@@ -25,8 +25,16 @@ func main() {
 
   if !*mode {
     // use new regexp impl
-    r := parse(*re)
-    fmt.Fprintln(os.Stderr, "r", r)
+    prog := Parse(*re)
+
+    for i := 0; i < len(prog); i++ {
+      if prog[i] == nil {
+        break
+      }
+      fmt.Fprintln(os.Stderr, i, prog[i].str())
+    }
+
+    r := &sregexp{prog}
 
     result := false
     for i := 0; i < *runs; i++ {

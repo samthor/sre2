@@ -1,28 +1,8 @@
 
 package main
 
-import (
-  "container/list"
-)
-
-const (
-  kSplit = iota         // proceed down out & out1
-  kRune                 // if match rune, proceed down out
-  kCall                 // if matcher passes, proceed down out
-  kMatch                // success state!
-)
-
-type State struct {
-  me int                // index of this state
-  mode byte             // mode (as above)
-  out int               // to next state index
-  out1 int              // to alt next state index (only for kSplit)
-  rune int              // rune to match (only for kRune)
-  matcher func(rune int) bool   // matcher method (for kCall)
-}
-
 /* generic matcher, implements definitions of above consts */
-func (s *State) match(rune int) bool {
+func (s *instr) match(rune int) bool {
   if s.mode == kRune {
     return s.rune == rune || s.rune == -1
   } else if s.mode == kCall {
@@ -33,14 +13,14 @@ func (s *State) match(rune int) bool {
 
 /* regexp - currently just a list of states */
 type sregexp struct {
-  prog []State
+  prog []*instr
 }
 
-func (r *sregexp) addstate(o *StateSet, s int) {
-  if s < 0 || o.Put(s) {
+func (r *sregexp) addstate(o *StateSet, s *instr) {
+  if s == nil || o.Put(s.idx) {
     return // invalid, or already have this state
   }
-  st := r.prog[s]
+  st := r.prog[s.idx]
   if st.mode == kSplit {
     r.addstate(o, st.out)
     r.addstate(o, st.out1)
@@ -60,7 +40,7 @@ func (r *sregexp) next(curr *StateSet, next *StateSet, rune int) (r_curr *StateS
 func (r *sregexp) run(str string) bool {
   curr := NewStateSet(len(r.prog), len(r.prog))
   next := NewStateSet(len(r.prog), len(r.prog))
-  r.addstate(curr, 0)
+  r.addstate(curr, r.prog[0])
 
   for _, rune := range str {
     //fmt.Fprintf(os.Stderr, "%c\t%b\n", rune, curr.bits[0])
@@ -78,54 +58,4 @@ func (r *sregexp) run(str string) bool {
     }
   }
   return false
-}
-
-/** generates simple NFA */
-// TODO: all broken!
-func parse(str string) sregexp {
-  stack := list.New()
-  var next int
-
-  // dummy initial split
-  stack.PushBack(&State{next, kSplit, -1, -1, -1, nil})
-  next += 1
-
-  for _, rune := range str {
-    switch rune {
-    case '*':
-      // zero or many
-      p := stack.Back()
-      p.Value.(*State).me = next
-      stack.InsertBefore(&State{next - 1, kSplit, next, next + 1, -1, nil}, p)
-      p.Value.(*State).out = next - 1
-      next += 1
-      stack.PushBack(&State{next, kSplit, -1, -1, -1, nil})
-    case '?':
-      // zero or one
-    case '+':
-      // one or many (i.e. a+ = aa*)
-    case '.':
-      // any char
-      p := stack.Back()
-      p.Value.(*State).out = next
-      stack.PushBack(&State{next, kRune, -1, -1, -1, nil})
-    default:
-      // literal match
-      p := stack.Back()
-      p.Value.(*State).out = next
-      stack.PushBack(&State{next, kRune, -1, -1, rune, nil})
-    }
-    next += 1
-  }
-  p := stack.Back()
-  p.Value.(*State).out = next
-  stack.PushBack(&State{next, kMatch, -1, -1, -1, nil})
-
-  prog := make([]State, stack.Len())
-  front := stack.Front()
-  for i := 0; i < stack.Len(); i++ {
-    prog[i] = *front.Value.(*State)
-    front = front.Next()
-  }
-  return sregexp{prog}
 }
