@@ -237,7 +237,9 @@ func (p *parser) regexp() (start *instr, end *instr) {
 }
 
 /**
- * Cleanup the given program.
+ * Cleanup the given program. Assumes the given input is a flat array containing
+ * no nil instructions. Will not clean up the first instruction, as it is always
+ * the canonical entry point for the regexp.
  */
 func cleanup(prog []*instr) []*instr {
   // TODO: Clear kSplit recursion. In some cases, kSplit paths may recurse back
