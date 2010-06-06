@@ -237,6 +237,62 @@ func (p *parser) regexp() (start *instr, end *instr) {
 }
 
 /**
+ * Cleanup the given program.
+ */
+func cleanup(prog []*instr) []*instr {
+  // TODO: Clear kSplit recursion. In some cases, kSplit paths may recurse back
+  // on themselves. We can remove this and convert it to a single-instr kSplit.
+
+  // Iterate through the program, and remove single-instr kSplits.
+  // NB: Don't parse the first instr, it will always be single.
+  for i := 1; i < len(prog); i++ {
+    pi := prog[i]
+    if pi.mode == kSplit && (pi.out1 == nil || pi.out == pi.out1) {
+      for j := 0; j < len(prog); j++ {
+        if prog[j] == nil {
+          continue
+        }
+        pj := prog[j]
+        if pj.out == pi {
+          pj.out = pi.out
+        }
+        if pj.out1 == pi {
+          pj.out1 = pi.out
+        }
+      }
+      prog[i] = nil
+    }
+  }
+
+  // We may now have nil gaps: shift everything up.
+  last := 0
+  for i := 0; i < len(prog); i++ {
+    if prog[i] != nil {
+      last = i
+    } else {
+      // find next non-nil, move here
+      var found int
+      for found = i; found < len(prog); found++ {
+        if prog[found] != nil {
+          break
+        }
+      }
+      if found == len(prog) {
+        break // no more entries
+      }
+
+      // move found to i
+      prog[i] = prog[found]
+      prog[i].idx = i
+      prog[found] = nil
+      last = i
+    }
+  }
+
+  return prog[0:last+1]
+}
+
+/**
  * Generates a simple straight-forward NFA.
  */
 func Parse(src string) (prog []*instr) {
@@ -255,5 +311,8 @@ func Parse(src string) (prog []*instr) {
   p.out(begin, start)
   p.out(end, match)
 
-  return p.prog
+  result := p.prog[0:end.idx+1]
+  result = cleanup(result)
+
+  return result
 }

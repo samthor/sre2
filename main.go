@@ -28,9 +28,6 @@ func main() {
     prog := Parse(*re)
 
     for i := 0; i < len(prog); i++ {
-      if prog[i] == nil {
-        break
-      }
       fmt.Fprintln(os.Stderr, i, prog[i].str())
     }
 
