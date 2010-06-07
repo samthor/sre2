@@ -31,7 +31,7 @@ type instr struct {
 }
 
 /**
- * String-representatin of an individual instruction.
+ * String-representation of an individual instruction.
  */
 func (i *instr) str() string {
   str := fmt.Sprintf("{%d", i.idx)
