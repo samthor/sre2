@@ -21,8 +21,7 @@ func NewStateSet(states int, size int) *StateSet {
   // NOTE: I'd like to just return &obitset(...) here, but Go does not seem to be
   // happy to cast this as a StateSet. It's also not happy for me to return a cast
   // to "*StateSet(...)", so this expansion is required.
-  var ret StateSet
-  ret = StateSet(&obitset{bwords, make([]int, bwords), make([]int, size), 0, size})
+  ret := StateSet(&obitset{bwords, make([]int, bwords), make([]int, size), 0, size})
   return &ret
 }
 
