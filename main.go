@@ -32,11 +32,12 @@ func main() {
     }
 
     result := false
+    var alt []int
     for i := 0; i < *runs; i++ {
-      result = r.RunSimple(*s)
+      result, alt = r.RunSubMatch(*s)
     }
 
-    fmt.Fprintln(os.Stderr, "new result", result, "alt", nil)
+    fmt.Fprintln(os.Stderr, "new result", result, "alt", alt)
   } else {
     // use old regexp impl
     r := regexp.MustCompile(*re)

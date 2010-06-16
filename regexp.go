@@ -370,6 +370,8 @@ func cleanup(prog []*instr) []*instr {
  * Generates a simple straight-forward NFA.
  */
 func Parse(src string) (r *sregexp) {
+  src = ".*(" + src + ").*"
+
   p := parser{src, -1, 0, make([]*instr, 128), 0, 0}
   begin := p.instr()
   match := p.instr()
