@@ -12,8 +12,8 @@ var (
   help *bool = flag.Bool("h", false, "to show help")
   mode *bool = flag.Bool("m", false, "to run in std mode")
   runs *int = flag.Int("runs", 100000, "number of runs to do")
-  re *string = flag.String("re", "a*a*a*a*a*aaaaa", "regexp to build")
-  s *string = flag.String("s", "aaaaa", "string to match")
+  re *string = flag.String("re", "(a|(b))+", "regexp to build")
+  s *string = flag.String("s", "aba", "string to match")
 )
 
 func main() {

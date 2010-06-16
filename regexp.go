@@ -7,8 +7,8 @@ import (
 
 /* regexp - currently just a list of states */
 type sregexp struct {
-  prog []*instr // list of states
-  alts int      // number of marked alts [()'s] in this regexp
+  prog []*instr         // list of states
+  alts int              // number of marked alts [()'s] in this regexp
 }
 
 type pair struct {
@@ -20,11 +20,13 @@ type pair struct {
  * Mutable match state.
  */
 type match struct {
-  r *sregexp
-  src string
-  ch int
-  cpos int
-  npos int
+  r *sregexp            // backing regexp
+  curr *StateSet        // current state set
+  next *StateSet        // next state set (used internally)
+  src string            // complete source string
+  ch int                // current unicode rune
+  cpos int              // current pos in src
+  npos int              // next pos in src
   alt []pair
 }
 
@@ -32,7 +34,11 @@ type match struct {
  * Store/return the next character in parser. -1 indicates EOF.
  */
 func (m *match) nextc() int {
-  if m.npos >= len(m.src) {
+  if m.npos == -1 {
+    // do nothing, we are at EOF
+  } else if m.npos >= len(m.src) {
+    m.cpos = m.npos
+    m.npos = -1
     m.ch = -1
   } else {
 		c, w := utf8.DecodeRuneInString(m.src[m.npos:])
@@ -43,59 +49,61 @@ func (m *match) nextc() int {
   return m.ch
 }
 
-func (r *sregexp) addstate(o *StateSet, s *instr, m *match) {
-  if s == nil || o.Put(s.idx) {
+func (m *match) addstate(s *instr) {
+  if s == nil || m.next.Put(s.idx) {
     return // invalid, or already have this state
   }
-  st := r.prog[s.idx]
+  st := m.r.prog[s.idx]
   if st.mode == kSplit {
-    r.addstate(o, st.out, m)
-    r.addstate(o, st.out1, m)
+    m.addstate(st.out)
+    m.addstate(st.out1)
   } else if st.mode == kAltBegin {
     // TODO: broken, stores global state, not branch state
     m.alt[st.alt].begin = m.cpos
-    r.addstate(o, st.out, m)
+    m.addstate(st.out)
   } else if st.mode == kAltEnd {
     // TODO: broken, stores global state, not branch state
     m.alt[st.alt].end = m.npos
-    r.addstate(o, st.out, m)
+    m.addstate(st.out)
   }
 }
 
-func (r *sregexp) next(curr *StateSet, next *StateSet, m *match) (r_curr *StateSet, r_next *StateSet) {
-  for _, st := range curr.Get() {
-    if r.prog[st].match(m.ch) {
-      r.addstate(next, r.prog[st].out, m)
+func (m *match) step() {
+  for _, st := range m.curr.Get() {
+    i := m.r.prog[st]
+    if i.match(m.ch) {
+      m.addstate(i.out)
     }
   }
-  curr.Clear() // clear curr so it can be re-used by caller
-  return next, curr
+  m.curr, m.next = m.next, m.curr
+  m.next.Clear() // clear next so it can be re-used
 }
 
 func (r *sregexp) run(src string) (bool, []pair) {
-  curr := NewStateSet(len(r.prog), len(r.prog))
-  next := NewStateSet(len(r.prog), len(r.prog))
+  m := &match{r, nil, nil, src, -1, -1, 0, make([]pair, r.alts)}
+  m.curr = NewStateSet(len(r.prog), len(r.prog))
+  m.next = NewStateSet(len(r.prog), len(r.prog))
 
-  m := &match{r, src, -1, -1, 0, make([]pair, r.alts)}
+  // kick off regexp, assert current pos is start of string
   m.nextc()
   if m.cpos != 0 {
     panic("cpos must be zero")
   }
 
-  r.addstate(curr, r.prog[0], m)
+  m.curr.Put(0) // always start at state zero
 
   for m.ch != -1 {
     //fmt.Fprintf(os.Stderr, "%c\t%b\n", rune, curr.bits[0])
-    if curr.Length() == 0 {
+    if m.curr.Length() == 0 {
       return false, nil // short-circuit failure
     }
 
     // move along rune paths
-    curr, next = r.next(curr, next, m)
+    m.step()
     m.nextc()
   }
 
-  for _, st := range curr.Get() {
+  for _, st := range m.curr.Get() {
     if r.prog[st].mode == kMatch {
       return true, m.alt
     }
