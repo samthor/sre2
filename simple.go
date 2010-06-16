@@ -13,7 +13,7 @@ func (r *sregexp) RunSimple(src string) bool {
   next := NewStateSet(len(r.prog), len(r.prog))
 
   // always start with state zero
-  addstate(curr, r.prog[0].out)
+  addstate(curr, r.prog[0])
 
   for _, ch := range src {
     //fmt.Fprintf(os.Stderr, "%c\t%b\n", rune, curr.bits[0])
@@ -46,7 +46,7 @@ func (r *sregexp) RunSimple(src string) bool {
  * in the given StateSet.
  */
 func addstate(set *StateSet, st *instr) {
-  if set.Put(st.idx) {
+  if st == nil || set.Put(st.idx) {
     return // invalid
   }
   if st.mode == kSplit {
