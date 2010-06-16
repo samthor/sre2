@@ -298,7 +298,7 @@ func cleanup(prog []*instr) []*instr {
         if fn(ci.out1) {
           ci.out1 = nil
         }
-        return true
+        return false
       }
       return false
     }
