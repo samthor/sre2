@@ -139,15 +139,14 @@ func (p *parser) alt() (start *instr, end *instr) {
   p.out(b_end, end)
 
   for p.ch == '|' {
-    split := p.instr()
-    p.out(split, b_start)
+    start = p.instr()
+    p.out(start, b_start)
 
     p.nextc()
     b_start, b_end = p.regexp()
-    p.out(split, b_start)
+    p.out(start, b_start)
     p.out(b_end, end)
-
-    start = split
+    b_start = start
   }
 
   if p.ch != ')' {
@@ -213,9 +212,10 @@ func (p *parser) closure() (start *instr, end *instr) {
     end = p.instr()
     p.out(start, p_start)
     p.out(start, end)
-    p.out(p_end, end)
-    if p.ch == '*' {
-      p.out(end, start)
+    if p.ch == '?' {
+      p.out(p_end, end)
+    } else {
+      p.out(p_end, start)
     }
     p.nextc()
   case '+':
@@ -278,8 +278,32 @@ func (p *parser) regexp() (start *instr, end *instr) {
  * slice may potentially be smaller.
  */
 func cleanup(prog []*instr) []*instr {
-  // TODO: Clear kSplit recursion. In some cases, kSplit paths may recurse back
-  // on themselves. We can remove this and convert it to a single-instr kSplit.
+  // Detect kSplit recursion. We can remove this and convert it to a single path.
+  states := NewStateSet(len(prog), len(prog))
+  for i := 1; i < len(prog); i++ {
+    states.Clear()
+    pi := prog[i]
+    var fn func(ci *instr) bool
+    fn = func(ci *instr) bool {
+      if ci != nil && ci.mode == kSplit {
+        if states.Put(ci.idx) {
+          // NOTE: I'm not sure if this will ever happen. Panic for now. If we're
+          // confident this won't happen, we could move the panic to runtime.
+          panic("regexp should never loop")
+          return true
+        }
+        if fn(ci.out) {
+          ci.out = nil
+        }
+        if fn(ci.out1) {
+          ci.out1 = nil
+        }
+        return true
+      }
+      return false
+    }
+    fn(pi)
+  }
 
   // Iterate through the program, and remove single-instr kSplits.
   // NB: Don't parse the first instr, it will always be single.
