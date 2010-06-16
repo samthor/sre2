@@ -16,6 +16,13 @@ type pair struct {
   end int
 }
 
+type altpos struct {
+  alt int               // alt index
+  is_end bool           // end (true) or begin (false)
+  pos int               // character pos
+  prev *altpos          // previous in stack
+}
+
 /**
  * Mutable match state.
  */
@@ -24,33 +31,38 @@ type match struct {
   next *StateSet        // next state set
   cpos int              // current string index
   npos int              // next string index
-  alt []pair            // alts (TODO: broken)
+  allocs int
 }
 
-func (m *match) addstate(s *instr) {
-  if s == nil || m.next.Put(s.idx) {
-    return // invalid, or already have this state
+func (m *match) addstate(s *instr, a *altpos) {
+  if s == nil {
+    return // invalid
   }
   st := m.r.prog[s.idx]
   if st.mode == kSplit {
-    m.addstate(st.out)
-    m.addstate(st.out1)
+    m.addstate(st.out, a)
+    m.addstate(st.out1, a)
   } else if st.mode == kAltBegin {
-    // TODO: broken, stores global state, not branch state
-    m.alt[st.alt].begin = m.cpos
-    m.addstate(st.out)
+    a = &altpos{st.alt, false, m.cpos, a}
+    m.allocs += 1
+    m.addstate(st.out, a)
   } else if st.mode == kAltEnd {
-    // TODO: broken, stores global state, not branch state
-    m.alt[st.alt].end = m.npos
-    m.addstate(st.out)
+    a = &altpos{st.alt, true, m.npos, a}
+    m.allocs += 1
+    m.addstate(st.out, a)
+  } else {
+    if m.next.Put(s.idx) {
+      panic("no dup states")
+    }
+    // terminal, store altpos in state
   }
 }
 
 func (r *sregexp) run(src string) (bool, []pair) {
-  m := &match{r, NewStateSet(len(r.prog), len(r.prog)), -1, -1, make([]pair, r.alts)}
+  m := &match{r, NewStateSet(len(r.prog), len(r.prog)), -1, -1, 0}
 
   // always start with state zero
-  m.addstate(r.prog[0])
+  m.addstate(r.prog[0], nil)
   curr := m.next
   m.next = NewStateSet(len(r.prog), len(r.prog))
 
@@ -67,7 +79,7 @@ func (r *sregexp) run(src string) (bool, []pair) {
     for _, st := range curr.Get() {
       i := r.prog[st]
       if i.match(ch) {
-        m.addstate(i.out)
+        m.addstate(i.out, nil)
       }
     }
     curr, m.next = m.next, curr
@@ -76,7 +88,7 @@ func (r *sregexp) run(src string) (bool, []pair) {
 
   for _, st := range curr.Get() {
     if r.prog[st].mode == kMatch {
-      return true, m.alt
+      return true, nil
     }
   }
   return false, nil
