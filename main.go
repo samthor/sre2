@@ -32,12 +32,11 @@ func main() {
     }
 
     result := false
-    var alt []pair
     for i := 0; i < *runs; i++ {
-      result, alt = r.run(*s)
+      result = r.RunSimple(*s)
     }
 
-    fmt.Fprintln(os.Stderr, "new result", result, "alt", alt)
+    fmt.Fprintln(os.Stderr, "new result", result, "alt", nil)
   } else {
     // use old regexp impl
     r := regexp.MustCompile(*re)
@@ -46,9 +45,6 @@ func main() {
       result = r.ExecuteString(*s)
     }
     success := (len(result) != 0)
-    if success {
-      result = result[2:]
-    }
     fmt.Fprintln(os.Stderr, "std result", success, "alt", result)
   }
 }
