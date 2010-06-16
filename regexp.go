@@ -21,32 +21,10 @@ type pair struct {
  */
 type match struct {
   r *sregexp            // backing regexp
-  curr *StateSet        // current state set
-  next *StateSet        // next state set (used internally)
-  src string            // complete source string
-  ch int                // current unicode rune
-  cpos int              // current pos in src
-  npos int              // next pos in src
-  alt []pair
-}
-
-/**
- * Store/return the next character in parser. -1 indicates EOF.
- */
-func (m *match) nextc() int {
-  if m.npos == -1 {
-    // do nothing, we are at EOF
-  } else if m.npos >= len(m.src) {
-    m.cpos = m.npos
-    m.npos = -1
-    m.ch = -1
-  } else {
-		c, w := utf8.DecodeRuneInString(m.src[m.npos:])
-		m.ch = c
-		m.cpos = m.npos
-		m.npos += w
-  }
-  return m.ch
+  next *StateSet        // next state set
+  cpos int              // current string index
+  npos int              // next string index
+  alt []pair            // alts (TODO: broken)
 }
 
 func (m *match) addstate(s *instr) {
@@ -68,42 +46,35 @@ func (m *match) addstate(s *instr) {
   }
 }
 
-func (m *match) step() {
-  for _, st := range m.curr.Get() {
-    i := m.r.prog[st]
-    if i.match(m.ch) {
-      m.addstate(i.out)
-    }
-  }
-  m.curr, m.next = m.next, m.curr
-  m.next.Clear() // clear next so it can be re-used
-}
-
 func (r *sregexp) run(src string) (bool, []pair) {
-  m := &match{r, nil, nil, src, -1, -1, 0, make([]pair, r.alts)}
-  m.curr = NewStateSet(len(r.prog), len(r.prog))
+  m := &match{r, NewStateSet(len(r.prog), len(r.prog)), -1, -1, make([]pair, r.alts)}
+
+  // always start with state zero
+  m.addstate(r.prog[0])
+  curr := m.next
   m.next = NewStateSet(len(r.prog), len(r.prog))
 
-  // kick off regexp, assert current pos is start of string
-  m.nextc()
-  if m.cpos != 0 {
-    panic("cpos must be zero")
-  }
+  var ch int
+  for m.cpos, ch = range src {
+     m.npos = m.cpos + utf8.RuneLen(ch)
 
-  m.curr.Put(0) // always start at state zero
-
-  for m.ch != -1 {
     //fmt.Fprintf(os.Stderr, "%c\t%b\n", rune, curr.bits[0])
-    if m.curr.Length() == 0 {
+    if curr.Length() == 0 {
       return false, nil // short-circuit failure
     }
 
     // move along rune paths
-    m.step()
-    m.nextc()
+    for _, st := range curr.Get() {
+      i := r.prog[st]
+      if i.match(ch) {
+        m.addstate(i.out)
+      }
+    }
+    curr, m.next = m.next, curr
+    m.next.Clear() // clear next so it can be re-used
   }
 
-  for _, st := range m.curr.Get() {
+  for _, st := range curr.Get() {
     if r.prog[st].mode == kMatch {
       return true, m.alt
     }
