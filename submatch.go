@@ -49,17 +49,18 @@ func (m *m_submatch) addstate(st *instr, a *altpos) {
  * as information on all submatches.
  */
 func (r *sregexp) RunSubMatch(src string) (bool, []int) {
-  m := &m_submatch{make([]pair, 0, len(r.prog)), 0}
+  states := len(r.prog)*4 // maximum number of states; should go away in optimisation
+  m := &m_submatch{make([]pair, 0, states), 0}
   m.addstate(r.prog[0], nil)
   curr := m.next
-  m.next = make([]pair, 0, len(r.prog))
+  m.next = make([]pair, 0, states)
 
   var ch int
   for _, ch = range src {
     m.npos += utf8.RuneLen(ch)
 
     // move along rune paths
-    for _, p := range curr { // ??? just to how many are here.
+    for _, p := range curr {
       st := r.prog[p.state]
       if st.match(ch) {
         m.addstate(st.out, p.alt)
@@ -72,8 +73,6 @@ func (r *sregexp) RunSubMatch(src string) (bool, []int) {
 
   for _, p := range curr { // ??? just to how many are here.
     if r.prog[p.state].mode == kMatch {
-      // WIN!
-      // TODO: backtrack over alts and make a result array for them
       alt := make([]int, r.alts*2)
       for i := 0; i < len(alt); i++ {
         alt[i] = -1
