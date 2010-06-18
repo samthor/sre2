@@ -370,7 +370,20 @@ func cleanup(prog []*instr) []*instr {
  * Generates a simple straight-forward NFA.
  */
 func Parse(src string) (r *sregexp) {
-  src = ".*(" + src + ").*"
+  // possibly expand this RE all the way to the left
+  if src[0] == '^' {
+    src = "(" + src[1:len(src)]
+  } else {
+    src = ".*(" + src
+  }
+
+  // possibly expand this RE to the right
+  // TODO: This is a pretty key example of where non-greedy would be great.
+  if src[len(src)-1] == '$' {
+    src = src[0:len(src)-1] + ")"
+  } else {
+    src = src + ").*"
+  }
 
   p := parser{src, -1, 0, make([]*instr, 128), 0, 0}
   begin := p.instr()
