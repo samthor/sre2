@@ -39,6 +39,7 @@ type instr struct {
   rune int              // rune to match (kRune)
   matcher func(rune int) bool   // matcher method (for kCall)
   alt int               // identifier of alt branch (for kAlt{Begin,End})
+  alt_id *string        // string identifier of alt branch
 }
 
 /**
@@ -56,10 +57,16 @@ func (i *instr) str() string {
     if i.out1 != nil {
       out += fmt.Sprintf(" out1=%d", i.out1.idx)
     }
-  case kAltBegin:
-    str += fmt.Sprintf(" kAltBegin alt=%d", i.alt)
-  case kAltEnd:
-    str += fmt.Sprintf(" kAltEnd alt=%d", i.alt)
+  case kAltBegin, kAltEnd:
+    if i.mode == kAltBegin {
+      str += " kAltBegin"
+    } else {
+      str += " kAltEnd"
+    }
+    str += fmt.Sprintf(" alt=%d", i.alt)
+    if i.alt_id != nil {
+      str += fmt.Sprintf(" alt_id=%s", *i.alt_id)
+    }
   case kRune:
     str += fmt.Sprintf(" kRune rune=%c", i.rune)
   case kCall:
@@ -100,7 +107,7 @@ func (p *parser) instr() *instr {
   if p.inst == len(p.prog) {
     panic("overflow instr buffer")
   }
-  i := &instr{p.inst, kSplit, nil, nil, -1, nil, -1}
+  i := &instr{p.inst, kSplit, nil, nil, -1, nil, -1, nil}
   p.prog[p.inst] = i
   p.inst += 1
   return i
@@ -133,7 +140,12 @@ func (p *parser) out(from *instr, to *instr) {
   }
 }
 
+/**
+ * Consume some bracketed expression.
+ */
 func (p *parser) alt() (start *instr, end *instr) {
+  use_alts := true
+  var alt_id *string
   altpos := p.altpos
   p.altpos += 1
 
@@ -146,6 +158,40 @@ func (p *parser) alt() (start *instr, end *instr) {
   end.alt = altpos
 
   p.nextc()
+  if p.ch == '?' {
+    // TODO: it might be appropriate to move this whole logic outside of alt().
+    p.nextc()
+    if p.ch == 'P' {
+      s := ""
+      if p.nextc() != '<' {
+        panic("expected <")
+      }
+      for p.nextc() != '>' {
+        if p.ch == -1 {
+          panic("reached EOF, expected >")
+        }
+        s += fmt.Sprintf("%c", p.ch)
+      }
+      alt_id = &s
+      p.nextc() // move past '<'
+    } else {
+      // anything but 'P' means flags (unmatched).
+      use_alts = false
+      outer: for {
+        switch p.ch {
+        case ':':
+          p.nextc() // move past ':'
+          break outer // no more flags, process re
+        case ')':
+          break outer // no more flags, ignore re, apply flags to outer
+        default:
+          panic(fmt.Sprint("flag unsupported:", p.ch))
+        }
+        p.nextc()
+      }
+    }
+  }
+
   b_start, b_end := p.regexp()
   start = b_start
   p.out(b_end, end)
@@ -169,9 +215,23 @@ func (p *parser) alt() (start *instr, end *instr) {
   alt_begin.mode = kAltBegin
   alt_begin.alt = altpos
   p.out(alt_begin, start)
+
+  if !use_alts {
+    // clear alts, this is an unmatched group
+    alt_begin.mode = kSplit
+    end.mode = kSplit
+  } else if alt_id != nil {
+    // set alt string id
+    alt_begin.alt_id = alt_id
+    end.alt_id = alt_id
+  }
+
   return alt_begin, end
 }
 
+/**
+ * Consume a single term (note that term may include a bracketed expression).
+ */
 func (p *parser) term() (start *instr, end *instr) {
   start = p.instr()
   end = start
@@ -213,6 +273,9 @@ func (p *parser) term() (start *instr, end *instr) {
   return start, end
 }
 
+/**
+ * Consume a closure: i.e. ( term + [ repitition ] )
+ */
 func (p *parser) closure() (start *instr, end *instr) {
   start, end = p.term()
 
