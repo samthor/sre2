@@ -42,7 +42,7 @@ func main() {
       }
     }
 
-    fmt.Fprintln(os.Stderr, "new result", result, "alt", alt)
+    fmt.Fprintln(os.Stdout, "new result", result, "alt", alt)
   } else {
     if !*sub {
       panic("unsupported")
@@ -55,6 +55,6 @@ func main() {
       result = r.ExecuteString(*s)
     }
     success := (len(result) != 0)
-    fmt.Fprintln(os.Stderr, "std result", success, "alt", result)
+    fmt.Fprintln(os.Stdout, "std result", success, "alt", result)
   }
 }
