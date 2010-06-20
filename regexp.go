@@ -3,8 +3,8 @@ package main
 
 import (
   "fmt"
-  "strconv"
-  "unicode"
+  //"strconv"
+  //"unicode"
   "utf8"
 )
 
@@ -345,26 +345,61 @@ func (p *parser) term() (start *instr, end *instr) {
 func (p *parser) closure() (start *instr, end *instr) {
   start, end = p.term()
 
+  var req int
+  var opt int
+  greedy := true
   switch p.ch {
-  case '?', '*':
-    p_start := start
-    p_end := end
-    start = p.instr()
-    end = p.instr()
-    p.out(start, p_start)
-    p.out(start, end)
-    if p.ch == '?' {
-      p.out(p_end, end)
-    } else {
-      p.out(p_end, start)
-    }
-    p.nextc()
+  case '?':
+    req, opt = 0, 1
+  case '*':
+    req, opt = 0, -1
   case '+':
+    req, opt = 1, -1
+  case '{':
+    panic("unsupported")
+  default:
+    return start, end // nothing to see here
+  }
+
+  if p.nextc() == '?' {
+    greedy = false
+    p.nextc()
+  }
+
+  if req == 0 {
+    p_start := start
+    start = p.instr()
+    if greedy {
+      start.out = p_start
+    } else {
+      start.out1 = p_start
+    }
+    if opt == -1 {
+      p.out(end, start)
+      end = start
+    } else if opt == 1 {
+      p_end := end
+      end = p.instr()
+      p.out(p_end, end)
+      p.out(start, end)
+    } else {
+      panic("unsupported opt size")
+    }
+  } else if req == 1 {
     p_end := end
     end = p.instr()
     p.out(p_end, end)
-    p.out(end, start)
-    p.nextc()
+    // assumes opt is non-0
+    if greedy {
+      end.out = start
+    } else {
+      end.out1 = start
+    }
+  } else {
+    panic("unsupported")
+  }
+
+/*
   case '{':
     count_str := ""
     p.nextc()
@@ -388,7 +423,7 @@ func (p *parser) closure() (start *instr, end *instr) {
     } else {
       panic("unexpected char in {}")
     }
-  }
+  }*/
   return start, end
 }
 
@@ -507,7 +542,7 @@ func Parse(src string) (r *sregexp) {
   if src[0] == '^' {
     src = "(" + src[1:len(src)]
   } else {
-    src = ".*(" + src
+    src = ".*?(" + src
   }
 
   // possibly expand this RE to the right
@@ -515,7 +550,7 @@ func Parse(src string) (r *sregexp) {
   if src[len(src)-1] == '$' {
     src = src[0:len(src)-1] + ")"
   } else {
-    src = src + ").*"
+    src = src + ").*?"
   }
 
   p := parser{src, -1, 0, make([]*instr, 128), 0, 0}
