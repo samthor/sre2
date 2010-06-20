@@ -235,7 +235,7 @@ func (p *parser) alt() (start *instr, end *instr) {
  * NOTE: This currently returns a func matcher, but there's no reason why we couldn't return a begin/end state.
  * A pro might make everything a bit more unified, and we can just back it by a single matcher if we want to anyway. However, this might lead to thought about using instr instances, which seems wasteful for single-matchers.
  */
-func (p *parser) charclass() func() bool {
+func (p *parser) charclass() func(rune int) bool {
   var matcher func(rune int) bool
 
   if p.ch != '[' {
@@ -288,9 +288,8 @@ func (p *parser) charclass() func() bool {
 
   if negate {
     return func(rune int) bool { return !matcher(rune) }
-  } else {
-    return matcher
   }
+  return matcher
 }
 
 /**
