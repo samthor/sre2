@@ -522,7 +522,7 @@ func Parse(src string) (r *sregexp) {
   p.nextc()
   start, end := p.regexp()
 
-  if p.nextc() != -1 {
+  if p.ch != -1 {
     panic("could not consume all of regexp!")
   }
 
