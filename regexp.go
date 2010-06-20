@@ -183,6 +183,7 @@ func (p *parser) alt() (start *instr, end *instr) {
           p.nextc() // move past ':'
           break outer // no more flags, process re
         case ')':
+          panic("can't yet apply flags to outer")
           break outer // no more flags, ignore re, apply flags to outer
         default:
           panic(fmt.Sprint("flag unsupported:", p.ch))
@@ -279,7 +280,7 @@ func (p *parser) charclass() func(rune int) bool {
   } else {
     // regular character class
     // TODO: match characters until ']'
-    panic("foo")
+    panic("regular char classes unsupported")
   }
 
   if matcher == nil {
@@ -309,8 +310,9 @@ func (p *parser) term() (start *instr, end *instr) {
   case '(':
     start, end = p.alt()
   case '[':
-    p.charclass()
-    panic("not yet supported: [")
+    start.mode = kCall
+    start.matcher = p.charclass()
+    return start, end // we don't want to consume more, return immediately
   case '$':
     panic("not yet supported: end of string")
   case '^':
