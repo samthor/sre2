@@ -120,9 +120,9 @@ func (p *parser) nextc() int {
   if p.pos >= len(p.src) {
     p.ch = -1
   } else {
-		c, w := utf8.DecodeRuneInString(p.src[p.pos:])
-		p.ch = c
-		p.pos += w
+    c, w := utf8.DecodeRuneInString(p.src[p.pos:])
+    p.ch = c
+    p.pos += w
   }
   return p.ch
 }
@@ -379,6 +379,10 @@ func (p *parser) closure() (start *instr, end *instr) {
       // fixed expansion
       count, _ := strconv.Atoi(count_str)
       panic(fmt.Sprintf("can't yet expand to: %d", count))
+
+      for i := 1; i < count; i++ {
+        // TODO: clone (start,end) n times!
+      }
     } else if p.ch == ',' {
       panic("can't handle anything but {n}")
     } else {
