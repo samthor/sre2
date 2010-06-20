@@ -230,6 +230,70 @@ func (p *parser) alt() (start *instr, end *instr) {
 }
 
 /**
+ * Consume a character class.
+ *
+ * NOTE: This currently returns a func matcher, but there's no reason why we couldn't return a begin/end state.
+ * A pro might make everything a bit more unified, and we can just back it by a single matcher if we want to anyway. However, this might lead to thought about using instr instances, which seems wasteful for single-matchers.
+ */
+func (p *parser) charclass() func() bool {
+  var matcher func(rune int) bool
+
+  if p.ch != '[' {
+    panic("expect charclass to start with [")
+  }
+
+  p.nextc()
+
+  negate := false
+  if p.ch == '^' {
+    negate = true
+    p.nextc()
+  }
+
+  if p.ch == ':' {
+    // matching ascii character class
+    if p.nextc() == '^' {
+      negate = true
+      p.nextc()
+    }
+
+    class := ""
+    for p.ch != ':' {
+      if p.ch == ']' || p.ch == -1 {
+        panic("expected :")
+      }
+      class += fmt.Sprintf("%c", p.ch)
+      p.nextc()
+    }
+    if p.nextc() != ']' {
+      panic("ascii class must finish with ]")
+    }
+    var ok bool
+    matcher, ok = ASCII[class]
+    if !ok {
+      panic(fmt.Sprint("unknown ascii class:", class))
+    }
+    if matcher != nil {
+    }
+    p.nextc() // move past ']'
+  } else {
+    // regular character class
+    // TODO: match characters until ']'
+    panic("foo")
+  }
+
+  if matcher == nil {
+    panic("should not have nil matcher here")
+  }
+
+  if negate {
+    return func(rune int) bool { return !matcher(rune) }
+  } else {
+    return matcher
+  }
+}
+
+/**
  * Consume a single term (note that term may include a bracketed expression).
  */
 func (p *parser) term() (start *instr, end *instr) {
@@ -246,6 +310,7 @@ func (p *parser) term() (start *instr, end *instr) {
   case '(':
     start, end = p.alt()
   case '[':
+    p.charclass()
     panic("not yet supported: [")
   case '$':
     panic("not yet supported: end of string")
