@@ -128,6 +128,26 @@ func (p *parser) nextc() int {
 }
 
 /**
+ * Return the literal string from->to some expected characters. Assumes that the
+ * cursor is resting on the from character. Will return the parser at the first
+ * char past the result.
+ */
+func (p *parser) literal(start int, end int) (result string, err bool) {
+  if p.ch != start {
+    return "", true
+  }
+
+  result = ""
+  for p.nextc() != end {
+    if p.ch == -1 {
+      return result, true
+    }
+    result += fmt.Sprintf("%c", p.ch)
+  }
+  return result, false
+}
+
+/**
  * Connect from -> to.
  */
 func (p *parser) out(from *instr, to *instr) {
@@ -162,15 +182,10 @@ func (p *parser) alt() (start *instr, end *instr) {
     // TODO: it might be appropriate to move this whole logic outside of alt().
     p.nextc()
     if p.ch == 'P' {
-      s := ""
-      if p.nextc() != '<' {
-        panic("expected <")
-      }
-      for p.nextc() != '>' {
-        if p.ch == -1 {
-          panic("reached EOF, expected >")
-        }
-        s += fmt.Sprintf("%c", p.ch)
+      p.nextc()
+      s, err := p.literal('<', '>')
+      if err {
+        panic("couldn't consume name in < >")
       }
       alt_id = &s
       p.nextc() // move past '<'
@@ -231,13 +246,11 @@ func (p *parser) alt() (start *instr, end *instr) {
 }
 
 /**
- * Consume a character class.
- *
- * NOTE: This currently returns a func matcher, but there's no reason why we couldn't return a begin/end state.
- * A pro might make everything a bit more unified, and we can just back it by a single matcher if we want to anyway. However, this might lead to thought about using instr instances, which seems wasteful for single-matchers.
+ * Consume a character class, and return a single instr representing this class.
  */
-func (p *parser) charclass() func(rune int) bool {
+func (p *parser) charclass() (i *instr) {
   var matcher func(rune int) bool
+  i = p.instr()
 
   if p.ch != '[' {
     panic("expect charclass to start with [")
@@ -247,28 +260,24 @@ func (p *parser) charclass() func(rune int) bool {
 
   negate := false
   if p.ch == '^' {
-    negate = true
+    negate = !negate
     p.nextc()
   }
 
   if p.ch == ':' {
-    // matching ascii character class
-    if p.nextc() == '^' {
-      negate = true
-      p.nextc()
-    }
-
-    class := ""
-    for p.ch != ':' {
-      if p.ch == ']' || p.ch == -1 {
-        panic("expected :")
-      }
-      class += fmt.Sprintf("%c", p.ch)
-      p.nextc()
+    class, err := p.literal(':', ':')
+    if err {
+      panic("could not consume ascii class")
     }
     if p.nextc() != ']' {
-      panic("ascii class must finish with ]")
+      panic("ascii class not closed")
     }
+
+    if class[0] == '^' {
+      negate = !negate
+      class = class[1:len(class)]
+    }
+
     var ok bool
     matcher, ok = ASCII[class]
     if !ok {
@@ -276,21 +285,28 @@ func (p *parser) charclass() func(rune int) bool {
     }
     if matcher != nil {
     }
-    p.nextc() // move past ']'
   } else {
     // regular character class
     // TODO: match characters until ']'
-    panic("regular char classes unsupported")
+    panic("unsupported")
   }
 
   if matcher == nil {
     panic("should not have nil matcher here")
   }
 
-  if negate {
-    return func(rune int) bool { return !matcher(rune) }
+  if p.ch != ']' {
+    panic("char class must end with ]")
   }
-  return matcher
+
+  if negate {
+    real := matcher
+    matcher = func(rune int) bool { return !real(rune) }
+  }
+
+  i.mode = kCall
+  i.matcher = matcher
+  return
 }
 
 /**
@@ -310,9 +326,8 @@ func (p *parser) term() (start *instr, end *instr) {
   case '(':
     start, end = p.alt()
   case '[':
-    start.mode = kCall
-    start.matcher = p.charclass()
-    return start, end // we don't want to consume more, return immediately
+    i := p.charclass()
+    start, end = i, i
   case '$':
     panic("not yet supported: end of string")
   case '^':
@@ -546,7 +561,6 @@ func Parse(src string) (r *sregexp) {
   }
 
   // possibly expand this RE to the right
-  // TODO: This is a pretty key example of where non-greedy would be great.
   if src[len(src)-1] == '$' {
     src = src[0:len(src)-1] + ")"
   } else {
