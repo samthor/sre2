@@ -71,10 +71,13 @@ func (r *sregexp) RunSubMatch(src string) (bool, []int) {
     m.next = m.next[0:0]
   }
 
-  for _, p := range curr { // ??? just to how many are here.
+  // Search for a terminal state (in current states). If one is found, allocate
+  // and return submatch information for those encountered.
+  for _, p := range curr {
     if r.prog[p.state].mode == kMatch {
       alt := make([]int, r.alts*2)
       for i := 0; i < len(alt); i++ {
+        // if a particular submatch is not encountered, return -1.
         alt[i] = -1
       }
 
