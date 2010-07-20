@@ -64,7 +64,7 @@ func (i *instr) str() string {
       str += fmt.Sprintf(" alt_id=%s", *i.alt_id)
     }
   case kRuneClass:
-    str += fmt.Sprintf(" kRuneClass rune=%s", i.rune)
+    str += fmt.Sprint(" kRuneClass ", i.rune)
   case kMatch:
     str += " kMatch"
   }

@@ -12,8 +12,7 @@ type runeclass interface {
 }
 
 // Rune class that matches any rune, i.e. "." regexp.
-type any_runeclass struct {
-}
+type any_runeclass struct {}
 
 func (c any_runeclass) MatchRune(rune int) bool {
   return true
@@ -24,19 +23,17 @@ func NewAnyRuneClass() runeclass {
 }
 
 // Rune class that matches a single positive rune.
-type single_runeclass struct {
-  rune int
-}
+type single_runeclass int
 
 func (c single_runeclass) MatchRune(rune int) bool {
-  return rune == c.rune
+  return rune == int(c)
 }
 
 func NewSingleRuneClass(rune int) runeclass {
   if rune <= 0 {
     panic("expected non-zero positive rune")
   }
-  return single_runeclass{rune}
+  return single_runeclass(rune)
 }
 
 // Complex rune class; may be used to represent a complete [...] character class
