@@ -3,8 +3,6 @@ package main
 
 import (
   "fmt"
-  //"strconv"
-  //"unicode"
   "utf8"
 )
 
@@ -23,8 +21,7 @@ const (
   kSplit = iota         // proceed down out & out1
   kAltBegin             // begin of alt section, i.e. '('
   kAltEnd               // end of alt section, i.e. ')'
-  kRune                 // if match rune, proceed down out
-  kCall                 // if matcher passes, proceed down out
+  kRuneClass            // if match rune, proceed down out
   kMatch                // success state!
 )
 
@@ -36,8 +33,7 @@ type instr struct {
   mode byte             // mode (as above)
   out *instr            // next instr to process
   out1 *instr           // alt next instr (for kSplit)
-  rune int              // rune to match (kRune)
-  matcher func(rune int) bool   // matcher method (for kCall)
+  rune runeclass        // rune class
   alt int               // identifier of alt branch (for kAlt{Begin,End})
   alt_id *string        // string identifier of alt branch
 }
@@ -67,10 +63,8 @@ func (i *instr) str() string {
     if i.alt_id != nil {
       str += fmt.Sprintf(" alt_id=%s", *i.alt_id)
     }
-  case kRune:
-    str += fmt.Sprintf(" kRune rune=%c", i.rune)
-  case kCall:
-    str += " kCall meth=?"
+  case kRuneClass:
+    str += fmt.Sprintf(" kRuneClass rune=%s", i.rune)
   case kMatch:
     str += " kMatch"
   }
@@ -82,12 +76,7 @@ func (i *instr) str() string {
  * match anything else.
  */
 func (s *instr) match(rune int) bool {
-  if s.mode == kRune {
-    return s.rune == rune || s.rune == -1
-  } else if s.mode == kCall {
-    return s.matcher(rune)
-  }
-  return false
+  return s.mode == kRuneClass && s.rune.MatchRune(rune)
 }
 
 /** transient parser state */
@@ -107,7 +96,7 @@ func (p *parser) instr() *instr {
   if p.inst == len(p.prog) {
     panic("overflow instr buffer")
   }
-  i := &instr{p.inst, kSplit, nil, nil, -1, nil, -1, nil}
+  i := &instr{p.inst, kSplit, nil, nil, nil, -1, nil}
   p.prog[p.inst] = i
   p.inst += 1
   return i
@@ -278,8 +267,8 @@ func (p *parser) charclass() (i *instr) {
       class = class[1:len(class)]
     }
 
-    var ok bool
-    matcher, ok = ASCII[class]
+    // TODO: grab ascii class range
+    ok := false
     if !ok {
       panic(fmt.Sprint("unknown ascii class:", class))
     }
@@ -304,8 +293,9 @@ func (p *parser) charclass() (i *instr) {
     matcher = func(rune int) bool { return !real(rune) }
   }
 
-  i.mode = kCall
-  i.matcher = matcher
+  panic("oh no")
+//  i.mode = kCall
+//  i.matcher = matcher
   return
 }
 
@@ -333,22 +323,23 @@ func (p *parser) term() (start *instr, end *instr) {
   case '^':
     panic("not yet supported: start of string")
   case '.':
-    start.mode = kRune
-  case '\\':
-    next := p.nextc()
-    start.mode = kRune
-    switch next {
-    case 'n':
-      start.rune = '\n'
-    case 't':
-      start.rune = '\t'
-    default:
-      // TODO: limit this to punctuation
-      start.rune = next
-    }
+    start.mode = kRuneClass
+    start.rune = NewAnyRuneClass()
   default:
-    start.mode = kRune
-    start.rune = p.ch
+    ch := p.ch
+    if ch == '\\' {
+      switch p.nextc() {
+      case 'n':
+        ch = '\n'
+      case 't':
+        ch = '\t'
+      default:
+      panic("only expected \\n or \\t")
+      }
+    }
+
+    start.mode = kRuneClass
+    start.rune = NewSingleRuneClass(ch)
   }
   p.nextc()
   return start, end

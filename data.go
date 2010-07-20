@@ -2,53 +2,88 @@
 package main
 
 import (
+  "container/vector"
   "unicode"
 )
 
-func IsAsciiLower(rune int) bool {
-  return rune >= 'a' && rune <= 'z'
+// Generic rune matcher.
+type runeclass interface {
+  MatchRune(rune int) bool
 }
 
-func IsAsciiUpper(rune int) bool {
-  return rune >= 'A' && rune <= 'Z'
+// Rune class that matches any rune, i.e. "." regexp.
+type any_runeclass struct {
 }
 
-func IsAsciiDigit(rune int) bool {
-  return rune >= '0' && rune <= '9'
+func (c any_runeclass) MatchRune(rune int) bool {
+  return true
 }
 
-func IsAsciiAlpha(rune int) bool {
-  return IsAsciiLower(rune) || IsAsciiUpper(rune)
+func NewAnyRuneClass() runeclass {
+  return any_runeclass{}
 }
 
-func IsAsciiAlphaNum(rune int) bool {
-  return IsAsciiAlpha(rune) || IsAsciiDigit(rune)
+// Rune class that matches a single positive rune.
+type single_runeclass struct {
+  rune int
 }
 
-func IsAsciiSpace(rune int) bool {
-  for _, ch := range "\t\n\v\f\r " {
-    if rune == ch {
-      return true
+func (c single_runeclass) MatchRune(rune int) bool {
+  return rune == c.rune
+}
+
+func NewSingleRuneClass(rune int) runeclass {
+  if rune <= 0 {
+    panic("expected non-zero positive rune")
+  }
+  return single_runeclass{rune}
+}
+
+// Complex rune class; may be used to represent a complete [...] character class
+// from regexp. Boils down to included and excluded rune sets.
+type complex_runeclass struct {
+  include vector.Vector
+  exclude vector.Vector
+}
+
+func (c complex_runeclass) MatchRune(rune int) bool {
+  // Default is to match. If we find runes to include, then the default will
+  // transition to false.
+  result := true
+
+  // Search through all included runes, and break if we find a match.
+  for _, raw := range c.include {
+    r, _ := raw.([]unicode.Range)
+    result = false
+    if unicode.Is(r, rune) {
+      result = true
+      break
     }
   }
-  return false
+
+  // If the result could be true, iterate through all excluded runes and fail
+  // immediately if we find a counter-example.
+  if result {
+    for _, raw := range c.exclude {
+      r, _ := raw.([]unicode.Range)
+      if unicode.Is(r, rune) {
+        result = false
+        break
+      }
+    }
+  }
+
+  return result
 }
 
-var (
-  ASCII = map[string] func(rune int) bool {
-    "alnum": IsAsciiAlphaNum,
-    "alpha": IsAsciiAlpha,
-//    "ascii"
-    "blank": func(rune int) bool { return rune == '\t' || rune == ' ' },
-//    "cntrl"
-    "digit": func(rune int) bool { return rune >= '0' && rune <= '9' },
-//    "graph"
-    "lower": IsAsciiLower,
-//    "print"
-//    "punct"
-    "space": IsAsciiSpace,
-    "upper": IsAsciiUpper,
-    "word": func(rune int) bool { return IsAsciiAlphaNum(rune) || rune == '_' },
-    "xdigit": func(rune int) bool { return unicode.Is(unicode.ASCII_Hex_Digit, rune) },
-  }
-)
+func (c complex_runeclass) Include(r []unicode.Range) {
+  c.include.Push(r)
+}
+
+func (c complex_runeclass) Exclude(r []unicode.Range) {
+  c.exclude.Push(r)
+}
+
+func NewComplexRuneClass() complex_runeclass {
+  return complex_runeclass{make(vector.Vector, 0), make(vector.Vector, 0)}
+}
