@@ -564,7 +564,7 @@ func Parse(src string) (r *sregexp) {
   }
 
   re := &sregexp{make([]*instr, 0, 1), -1}
-  p := parser{re, src, -1, 0}
+  p := parser{re, src, 0, 0}
   begin := p.instr()
   match := p.instr()
   match.mode = kMatch
