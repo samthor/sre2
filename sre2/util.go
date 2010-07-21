@@ -1,5 +1,5 @@
 
-package main
+package sre2
 
 /**
  * Provides a storage mechanism for an ordered set of integer states.

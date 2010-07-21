@@ -1,5 +1,5 @@
 
-package main
+package sre2
 
 import (
   "container/vector"

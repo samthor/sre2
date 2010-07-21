@@ -1,8 +1,9 @@
 
-package main
+package sre2
 
 import (
   "fmt"
+  "os"
   "unicode"
   "utf8"
 )
@@ -70,6 +71,15 @@ func (i *instr) str() string {
     str += " kMatch"
   }
   return str + out + "}"
+}
+
+/**
+ * DebugOut writes the given regexp to Stderr, for debugging.
+ */
+func (r *sregexp) DebugOut() {
+    for i := 0; i < len(r.prog); i++ {
+      fmt.Fprintln(os.Stderr, i, r.prog[i].str())
+    }
 }
 
 /*

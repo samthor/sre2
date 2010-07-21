@@ -6,6 +6,7 @@ import (
   "os"
   "flag"
   "regexp"
+  "sre2"
 )
 
 var (
@@ -26,11 +27,8 @@ func main() {
 
   if !*mode {
     // use new regexp impl
-    r := Parse(*re)
-
-    for i := 0; i < len(r.prog); i++ {
-      fmt.Fprintln(os.Stderr, i, r.prog[i].str())
-    }
+    r := sre2.Parse(*re)
+    r.DebugOut()
 
     result := false
     var alt []int

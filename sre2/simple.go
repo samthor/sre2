@@ -1,5 +1,5 @@
 
-package main
+package sre2 
 
 /**
  * Simple regexp matcher entry point. Just returns true/false for matching re,
