@@ -23,17 +23,19 @@ func NewAnyRuneClass() runeclass {
 }
 
 // Rune class that matches a single positive rune.
-type single_runeclass int
+type single_runeclass struct {
+  rune int
+}
 
 func (c single_runeclass) MatchRune(rune int) bool {
-  return rune == int(c)
+  return rune == c.rune
 }
 
 func NewSingleRuneClass(rune int) runeclass {
   if rune <= 0 {
     panic("expected non-zero positive rune")
   }
-  return single_runeclass(rune)
+  return single_runeclass{rune}
 }
 
 // Complex rune class; may be used to represent a complete [...] character class
@@ -73,11 +75,11 @@ func (c complex_runeclass) MatchRune(rune int) bool {
   return result
 }
 
-func (c complex_runeclass) Include(r []unicode.Range) {
+func (c *complex_runeclass) Include(r []unicode.Range) {
   c.include.Push(r)
 }
 
-func (c complex_runeclass) Exclude(r []unicode.Range) {
+func (c *complex_runeclass) Exclude(r []unicode.Range) {
   c.exclude.Push(r)
 }
 

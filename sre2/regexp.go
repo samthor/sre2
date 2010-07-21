@@ -77,9 +77,9 @@ func (i *instr) str() string {
  * DebugOut writes the given regexp to Stderr, for debugging.
  */
 func (r *sregexp) DebugOut() {
-    for i := 0; i < len(r.prog); i++ {
-      fmt.Fprintln(os.Stderr, i, r.prog[i].str())
-    }
+  for i := 0; i < len(r.prog); i++ {
+    fmt.Fprintln(os.Stderr, i, r.prog[i].str())
+  }
 }
 
 /*
