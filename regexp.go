@@ -3,6 +3,7 @@ package main
 
 import (
   "fmt"
+  "unicode"
   "utf8"
 )
 
@@ -81,24 +82,25 @@ func (s *instr) match(rune int) bool {
 
 /** transient parser state */
 type parser struct {
+  re *sregexp
   src string
   ch int
   pos int
-  prog []*instr
-  inst int
-  altpos int
 }
 
 /**
  * Generate a new pre-indexed instr.
  */
 func (p *parser) instr() *instr {
-  if p.inst == len(p.prog) {
-    panic("overflow instr buffer")
+  pos := len(p.re.prog)
+  if pos == cap(p.re.prog) {
+    local := p.re.prog
+    p.re.prog = make([]*instr, pos, pos * 2)
+    copy(p.re.prog, local)
   }
-  i := &instr{p.inst, kSplit, nil, nil, nil, -1, nil}
-  p.prog[p.inst] = i
-  p.inst += 1
+  p.re.prog = p.re.prog[0:pos+1]
+  i := &instr{pos, kSplit, nil, nil, nil, -1, nil}
+  p.re.prog[pos] = i
   return i
 }
 
@@ -155,8 +157,8 @@ func (p *parser) out(from *instr, to *instr) {
 func (p *parser) alt() (start *instr, end *instr) {
   use_alts := true
   var alt_id *string
-  altpos := p.altpos
-  p.altpos += 1
+  altpos := p.re.alts
+  p.re.alts += 1
 
   if p.ch != '(' {
     panic("alt must start with '('")
@@ -237,66 +239,59 @@ func (p *parser) alt() (start *instr, end *instr) {
 /**
  * Consume a character class, and return a single instr representing this class.
  */
-func (p *parser) charclass() (i *instr) {
-  var matcher func(rune int) bool
-  i = p.instr()
-
+func (p *parser) charclass() runeclass {
   if p.ch != '[' {
     panic("expect charclass to start with [")
   }
+  p.nextc() // walk over '['
 
-  p.nextc()
-
+  class := NewComplexRuneClass()
   negate := false
   if p.ch == '^' {
     negate = !negate
     p.nextc()
   }
 
-  if p.ch == ':' {
-    class, err := p.literal(':', ':')
-    if err {
-      panic("could not consume ascii class")
-    }
-    if p.nextc() != ']' {
-      panic("ascii class not closed")
+  outer: for {
+    switch p.ch {
+    case '[':
+      if p.nextc() != ':' {
+        panic("expected ascii class [:")
+      }
+      _, err := p.literal(':', ':')
+      if err {
+        panic("could not consume ascii class")
+      }
+      if p.nextc() != ']' {
+        panic("unclosed ascii class")
+      }
+    case ']':
+      // NOTE: caller expects us not to walk over last bracket.
+      break outer
+    case -1:
+      panic("unclosed character class")
     }
 
-    if class[0] == '^' {
-      negate = !negate
-      class = class[1:len(class)]
+    rune := p.ch
+    r := make([]unicode.Range, 1)
+    if p.nextc() == '-' {
+      rune_end := p.nextc()
+      if rune >= rune_end {
+        panic(fmt.Sprintf("unexpected range: %c >= %c", rune, rune_end))
+      }
+      r[0] = unicode.Range{rune, rune_end, 1}
+      p.nextc() // walk past end of range
+    } else {
+      r[0] = unicode.Range{rune, rune, 1}
     }
-
-    // TODO: grab ascii class range
-    ok := false
-    if !ok {
-      panic(fmt.Sprint("unknown ascii class:", class))
+    if negate {
+      class.Exclude(r)
+    } else {
+      class.Include(r)
     }
-    if matcher != nil {
-    }
-  } else {
-    // regular character class
-    // TODO: match characters until ']'
-    panic("unsupported")
   }
 
-  if matcher == nil {
-    panic("should not have nil matcher here")
-  }
-
-  if p.ch != ']' {
-    panic("char class must end with ]")
-  }
-
-  if negate {
-    real := matcher
-    matcher = func(rune int) bool { return !real(rune) }
-  }
-
-  panic("oh no")
-//  i.mode = kCall
-//  i.matcher = matcher
-  return
+  return class
 }
 
 /**
@@ -316,8 +311,8 @@ func (p *parser) term() (start *instr, end *instr) {
   case '(':
     start, end = p.alt()
   case '[':
-    i := p.charclass()
-    start, end = i, i
+    start.mode = kRuneClass
+    start.rune = p.charclass()
   case '$':
     panic("not yet supported: end of string")
   case '^':
@@ -558,7 +553,8 @@ func Parse(src string) (r *sregexp) {
     src = src + ").*?"
   }
 
-  p := parser{src, -1, 0, make([]*instr, 128), 0, 0}
+  re := &sregexp{make([]*instr, 0, 1), -1}
+  p := parser{re, src, -1, 0}
   begin := p.instr()
   match := p.instr()
   match.mode = kMatch
@@ -573,8 +569,6 @@ func Parse(src string) (r *sregexp) {
   p.out(begin, start)
   p.out(end, match)
 
-  result := p.prog[0:end.idx+1]
-  result = cleanup(result)
-
-  return &sregexp{result, p.altpos}
+  re.prog = cleanup(re.prog)
+  return re
 }

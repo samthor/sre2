@@ -2,7 +2,7 @@
 package main
 
 /**
- * Provides a storage mechanism for an ordered set of states (i.e., int).
+ * Provides a storage mechanism for an ordered set of integer states.
  */
 type StateSet interface {
   Put(v int) bool       // put the given int into set, false if successful
