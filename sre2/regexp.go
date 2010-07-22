@@ -4,6 +4,8 @@ package sre2
 import (
   "fmt"
   "os"
+  "strconv"
+  "strings"
   "unicode"
   "utf8"
 )
@@ -189,7 +191,7 @@ func (p *parser) alt() (start *instr, end *instr) {
         panic("couldn't consume name in < >")
       }
       alt_id = &s
-      p.nextc() // move past '<'
+      p.nextc() // move past '>'
     } else {
       // anything but 'P' means flags (unmatched).
       use_alts = false
@@ -367,7 +369,21 @@ func (p *parser) closure() (start *instr, end *instr) {
   case '+':
     req, opt = 1, -1
   case '{':
-    panic("unsupported")
+    r, err := p.literal('{', '}')
+    if err {
+      panic("couldn't consume repitition {}")
+    }
+    parts := strings.Split(r, ",", 2)
+    // TODO: handle malformed int
+    req, _ = strconv.Atoi(parts[0])
+    if len(parts) == 2 {
+      if len(parts[1]) > 0 {
+        // TODO: handle malformed int
+        opt, _ = strconv.Atoi(parts[1])
+      } else {
+        opt = -1
+      }
+    }
   default:
     return start, end // nothing to see here
   }
@@ -394,47 +410,26 @@ func (p *parser) closure() (start *instr, end *instr) {
       p.out(p_end, end)
       p.out(start, end)
     } else {
-      panic("unsupported opt size")
+      panic(fmt.Sprint("unsupported opt size ", opt))
     }
   } else if req == 1 {
     p_end := end
     end = p.instr()
     p.out(p_end, end)
-    // assumes opt is non-0
-    if greedy {
-      end.out = start
-    } else {
-      end.out1 = start
+    if opt != 0 {
+      if opt != -1 {
+        panic(fmt.Sprint("unsupported opt size ", opt))
+      }
+      if greedy {
+        end.out = start
+      } else {
+        end.out1 = start
+      }
     }
   } else {
-    panic("unsupported")
+    panic(fmt.Sprint("unsupported req size ", req))
   }
 
-/*
-  case '{':
-    count_str := ""
-    p.nextc()
-    for unicode.IsDigit(p.ch) {
-      count_str += fmt.Sprintf("%c", p.ch)
-      p.nextc()
-    }
-    if len(count_str) == 0 {
-      panic("{ must be followed by digit")
-    }
-    if p.ch == '}' {
-      // fixed expansion
-      count, _ := strconv.Atoi(count_str)
-      panic(fmt.Sprintf("can't yet expand to: %d", count))
-
-      for i := 1; i < count; i++ {
-        // TODO: clone (start,end) n times!
-      }
-    } else if p.ch == ',' {
-      panic("can't handle anything but {n}")
-    } else {
-      panic("unexpected char in {}")
-    }
-  }*/
   return start, end
 }
 
