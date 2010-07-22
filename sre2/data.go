@@ -79,7 +79,19 @@ func (c *complex_runeclass) Include(r []unicode.Range) {
   c.include.Push(r)
 }
 
+func (c *complex_runeclass) IncludeRune(rune int) {
+  r := make([]unicode.Range, 1)
+  r[0] = unicode.Range{rune, rune, 1}
+  c.include.Push(r)
+}
+
 func (c *complex_runeclass) Exclude(r []unicode.Range) {
+  c.exclude.Push(r)
+}
+
+func (c *complex_runeclass) ExcludeRune(rune int) {
+  r := make([]unicode.Range, 1)
+  r[0] = unicode.Range{rune, rune, 1}
   c.exclude.Push(r)
 }
 
