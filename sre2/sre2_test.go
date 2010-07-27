@@ -41,7 +41,7 @@ func TestRuneClass(t *testing.T) {
 
   cr = NewComplexRuneClass()
   cr.Exclude(unicode.Cyrillic)
-  checkState(t, cr.MatchRune('%'), "should match random char")
+  checkState(t, cr.MatchRune('%'), "should match random char, class is exclude-only")
   cr.IncludeRune('Ж')
   checkState(t, !cr.MatchRune('%'), "should no longer match random char")
 }
