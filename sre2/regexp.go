@@ -10,17 +10,20 @@ import (
   "utf8"
 )
 
-/**
- * Regexp definition. Simple, just a list of states.
- */
+// Regexp definition. Simple, just a list of states and a number of alts.
 type sregexp struct {
   prog []*instr         // list of states
   alts int              // number of marked alts [()'s] in this regexp
 }
 
-/**
- * Instruction type definitions, for `instr.mode`.
- */
+// Writes the given regexp to Stderr, for debugging.
+func (r *sregexp) DebugOut() {
+  for i := 0; i < len(r.prog); i++ {
+    fmt.Fprintln(os.Stderr, i, r.prog[i].String())
+  }
+}
+
+// Instruction type definitions, for "instr.mode".
 const (
   kSplit = iota         // proceed down out & out1
   kAltBegin             // begin of alt section, i.e. '('
@@ -29,9 +32,7 @@ const (
   kMatch                // success state!
 )
 
-/**
- * Single instruction in regexp.
- */
+// Represents a single instruction in any regexp.
 type instr struct {
   idx int               // index of this instr
   mode byte             // mode (as above)
@@ -42,10 +43,8 @@ type instr struct {
   alt_id *string        // string identifier of alt branch
 }
 
-/**
- * String-representation of an individual instruction.
- */
-func (i *instr) str() string {
+// This provides a string-representation of any given instruction.
+func (i *instr) String() string {
   str := fmt.Sprintf("{%d", i.idx)
   out := ""
   if i.out != nil {
@@ -75,24 +74,12 @@ func (i *instr) str() string {
   return str + out + "}"
 }
 
-/**
- * DebugOut writes the given regexp to Stderr, for debugging.
- */
-func (r *sregexp) DebugOut() {
-  for i := 0; i < len(r.prog); i++ {
-    fmt.Fprintln(os.Stderr, i, r.prog[i].str())
-  }
-}
-
-/*
- * Generic matcher for consuming instr instances (i.e. kRune/kCall). Does not
- * match anything else.
- */
+// Matcher method for consuming runes, thus only matches kRuneClass.
 func (s *instr) match(rune int) bool {
   return s.mode == kRuneClass && s.rune.MatchRune(rune)
 }
 
-/** transient parser state */
+// Transient parser state, a combination of regexp and string iterator.
 type parser struct {
   re *sregexp
   src string
@@ -100,9 +87,8 @@ type parser struct {
   pos int
 }
 
-/**
- * Generate a new pre-indexed instr.
- */
+// Generate a new instruction struct for use in regexp. By default, the instr
+// will be of type 'kSplit'.
 func (p *parser) instr() *instr {
   pos := len(p.re.prog)
   if pos == cap(p.re.prog) {
@@ -153,11 +139,9 @@ func (p *parser) jump(pos int) int {
   return p.ch
 }
 
-/**
- * Return the literal string from->to some expected characters. Assumes that the
- * cursor is resting on the from character. Will return the parser at the first
- * char past the result.
- */
+// Return the literal string from->to some expected characters. Assumes that the
+// cursor is resting on the 'from' character. This method will return with the
+// cursor resting on the 'to' character, or on the final EOF (if not found).
 func (p *parser) literal(start int, end int) (result string, err bool) {
   if p.ch != start {
     return "", true
@@ -173,9 +157,8 @@ func (p *parser) literal(start int, end int) (result string, err bool) {
   return result, false
 }
 
-/**
- * Connect from -> to.
- */
+// Helper method to connect instr 'from' to instr 'out'.
+// TODO: Use safer connection helpers.
 func (p *parser) out(from *instr, to *instr) {
   if from.out == nil {
     from.out = to
@@ -186,9 +169,8 @@ func (p *parser) out(from *instr, to *instr) {
   }
 }
 
-/**
- * Consume some bracketed expression.
- */
+// Consume some bracketed expression. At input, expects the cursor to be on '('
+// and will return with the cursor resting on the matching ')'.
 func (p *parser) alt() (start *instr, end *instr) {
   use_alts := true
   var alt_id *string
@@ -271,9 +253,11 @@ func (p *parser) alt() (start *instr, end *instr) {
   return alt_begin, end
 }
 
-/**
- * Consume a character class, and return a single instr representing this class.
- */
+// Consume a single character class and provide an implementation of the
+// runeclass interface. At input, expects the cursor to be on '[', and will
+// return on the closing ']'.
+// TODO: Handle all character terms, not bracketed expressions. This would
+// include terms such as \d, \t, etc as well as literal characters.
 func (p *parser) charclass() runeclass {
   if p.ch != '[' {
     panic("expect charclass to start with [")
@@ -329,9 +313,9 @@ func (p *parser) charclass() runeclass {
   return class
 }
 
-/**
- * Consume a single term (note that term may include a bracketed expression).
- */
+// Consume a single term at the current cursor position. This may include a
+// bracketed expression. When this function returns, the cursor will have moved
+// past the final rune in this term.
 func (p *parser) term() (start *instr, end *instr) {
   start = p.instr()
   end = start
@@ -375,9 +359,8 @@ func (p *parser) term() (start *instr, end *instr) {
   return start, end
 }
 
-/**
- * Consume a closure: i.e. ( term + [ repitition ] )
- */
+// Consume a closure, defined as (term[repitition]). When this function returns,
+// the cursor will be resting past the final rune in this closure.
 func (p *parser) closure() (start *instr, end *instr) {
   term_pos := p.pos
   start = p.instr()
@@ -385,9 +368,11 @@ func (p *parser) closure() (start *instr, end *instr) {
   t_start, t_end := p.term()
   first := true
 
+  // Req and opt represent the number of required cases, and the number of
+  // optional cases, respectively. Opt may be -1 to indicate no optional limit.
   var req int
   var opt int
-  greedy := true
+  greedy := true // Greedily choose an optional step over continuing.
   switch p.ch {
   case '?':
     req, opt = 0, 1
@@ -426,7 +411,7 @@ func (p *parser) closure() (start *instr, end *instr) {
     panic("invalid req/opt combination")
   }
 
-  // generate required steps
+  // Generate all required steps.
   for i := 0; i < req; i++ {
     if first {
       first = false
@@ -438,7 +423,7 @@ func (p *parser) closure() (start *instr, end *instr) {
     end = t_end
   }
 
-  // generate optional steps
+  // Generate all optional steps.
   if opt == -1 {
     if first {
       first = false
@@ -470,9 +455,9 @@ func (p *parser) closure() (start *instr, end *instr) {
       helper := p.instr()
       p.out(end, helper)
       if greedy {
-        helper.out = t_start
+        helper.out = t_start // greedily choose optional step
       } else {
-        helper.out1 = t_start
+        helper.out1 = t_start // optional step is 2nd preference
       }
       p.out(helper, real_end)
 
@@ -488,10 +473,9 @@ func (p *parser) closure() (start *instr, end *instr) {
   return start, end
 }
 
-/**
- * Match a regexp (defined as [closure]*) from parser, until either: EOF, |, or
- * ) is encountered.
- */
+// Match a regexp (defined as ([closure]*)) from the parser until either: EOF,
+// the literal '|' or the literal ')'. At return, the cursor will still rest
+// on this final terminal character.
 func (p *parser) regexp() (start *instr, end *instr) {
   start = p.instr()
   curr := start
@@ -510,14 +494,11 @@ func (p *parser) regexp() (start *instr, end *instr) {
   return start, end
 }
 
-/**
- * Cleanup the given program. Assumes the given input is a flat slice containing
- * no nil instructions. Will not clean up the first instruction, as it is always
- * the canonical entry point for the regexp.
- *
- * Returns a similarly flat slice containing no nil instructions, however the
- * slice may potentially be smaller.
- */
+// Cleanup the given program. Assumes the given input is a flat slice containing
+// no nil instructions. Will not clean up the first instruction, as it is always
+// the canonical entry point for the regexp.
+// Returns a similarly flat slice containing no nil instructions, however the
+// slice may potentially be smaller.
 func cleanup(prog []*instr) []*instr {
   // Detect kSplit recursion. We can remove this and convert it to a single path.
   states := NewStateSet(len(prog), len(prog))
@@ -595,9 +576,8 @@ func cleanup(prog []*instr) []*instr {
   return prog[0:last+1]
 }
 
-/**
- * Generates a simple straight-forward NFA.
- */
+// Generates a simple, straight-forward NFA. Matches an entire regexp from the
+// given input string.
 func Parse(src string) (r *sregexp) {
   // possibly expand this RE all the way to the left
   if src[0] == '^' {
