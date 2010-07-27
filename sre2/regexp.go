@@ -106,6 +106,9 @@ type parser struct {
 func (p *parser) instr() *instr {
   pos := len(p.re.prog)
   if pos == cap(p.re.prog) {
+    if pos == 0 {
+      panic("should not have cap of zero")
+    }
     local := p.re.prog
     p.re.prog = make([]*instr, pos, pos * 2)
     copy(p.re.prog, local)
@@ -116,16 +119,36 @@ func (p *parser) instr() *instr {
   return i
 }
 
-/**
- * Store/return the next character in parser. -1 indicates EOF.
- */
+// Store and return the next rune in the parser. -1 is EOF.
 func (p *parser) nextc() int {
-  if p.pos >= len(p.src) {
-    p.ch = -1
+  if p.pos == -1 {
+    p.pos = 0
+  } else if p.ch != -1 {
+    p.pos += utf8.RuneLen(p.ch)
+    if p.pos >= len(p.src) {
+      p.ch = -1
+      return -1
+    }
   } else {
-    c, w := utf8.DecodeRuneInString(p.src[p.pos:])
-    p.ch = c
-    p.pos += w
+    return -1
+  }
+
+  p.ch, _ = utf8.DecodeRuneInString(p.src[p.pos:])
+  return p.ch
+}
+
+// Jump to the given position within the parser's contained string. The rune
+// at this location will be set in p.ch and returned. -1 is EOF.
+func (p *parser) jump(pos int) int {
+  if pos < 0 {
+    panic("can't jump to negative position")
+  }
+
+  p.pos = pos
+  if p.pos < len(p.src) {
+    p.ch, _ = utf8.DecodeRuneInString(p.src[p.pos:])
+  } else {
+    p.ch = -1
   }
   return p.ch
 }
@@ -356,7 +379,11 @@ func (p *parser) term() (start *instr, end *instr) {
  * Consume a closure: i.e. ( term + [ repitition ] )
  */
 func (p *parser) closure() (start *instr, end *instr) {
-  start, end = p.term()
+  term_pos := p.pos
+  start = p.instr()
+  end = start
+  t_start, t_end := p.term()
+  first := true
 
   var req int
   var opt int
@@ -385,51 +412,79 @@ func (p *parser) closure() (start *instr, end *instr) {
       }
     }
   default:
-    return start, end // nothing to see here
+    return t_start, t_end // nothing to see here
   }
 
   if p.nextc() == '?' {
+    // TODO: explode if opt is 0?
     greedy = false
     p.nextc()
   }
+  end_pos := p.pos
 
-  if req == 0 {
-    p_start := start
-    start = p.instr()
-    if greedy {
-      start.out = p_start
-    } else {
-      start.out1 = p_start
-    }
-    if opt == -1 {
-      p.out(end, start)
-      end = start
-    } else if opt == 1 {
-      p_end := end
-      end = p.instr()
-      p.out(p_end, end)
-      p.out(start, end)
-    } else {
-      panic(fmt.Sprint("unsupported opt size ", opt))
-    }
-  } else if req == 1 {
-    p_end := end
-    end = p.instr()
-    p.out(p_end, end)
-    if opt != 0 {
-      if opt != -1 {
-        panic(fmt.Sprint("unsupported opt size ", opt))
-      }
-      if greedy {
-        end.out = start
-      } else {
-        end.out1 = start
-      }
-    }
-  } else {
-    panic(fmt.Sprint("unsupported req size ", req))
+  if req < 0 || opt < -1 || req == 0 && opt == 0 {
+    panic("invalid req/opt combination")
   }
 
+  // generate required steps
+  for i := 0; i < req; i++ {
+    if first {
+      first = false
+    } else {
+      p.jump(term_pos)
+      t_start, t_end = p.term()
+    }
+    p.out(end, t_start)
+    end = t_end
+  }
+
+  // generate optional steps
+  if opt == -1 {
+    if first {
+      first = false
+    } else {
+      p.jump(term_pos)
+      t_start, t_end = p.term()
+    }
+
+    helper := p.instr()
+    p.out(end, helper)
+    if greedy {
+      helper.out = t_start // greedily choose optional step
+    } else {
+      helper.out1 = t_start // optional step is 2nd preference
+    }
+    p.out(t_end, helper)
+    end = helper
+  } else {
+    real_end := p.instr()
+
+    for i := 0; i < opt; i++ {
+      if first {
+        first = false
+      } else {
+        p.jump(term_pos)
+        t_start, t_end = p.term()
+      }
+
+      helper := p.instr()
+      p.out(end, helper)
+      if greedy {
+        helper.out = t_start
+      } else {
+        helper.out1 = t_start
+      }
+      p.out(helper, real_end)
+
+      end = p.instr()
+      p.out(t_end, end)
+    }
+
+    p.out(end, real_end)
+    end = real_end
+  }
+
+  p.jump(end_pos)
   return start, end
 }
 
@@ -559,7 +614,7 @@ func Parse(src string) (r *sregexp) {
   }
 
   re := &sregexp{make([]*instr, 0, 1), 0}
-  p := parser{re, src, -1, 0}
+  p := parser{re, src, -1, -1}
   begin := p.instr()
   match := p.instr()
   match.mode = kMatch

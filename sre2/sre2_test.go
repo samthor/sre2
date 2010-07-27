@@ -6,18 +6,80 @@ import (
   "unicode"
 )
 
+// Check the given state to be true.
 func checkState(t *testing.T, state bool, err string) {
   if !state {
     t.Error(err)
   }
 }
 
+// Check the equality of two []int slices.
+func checkIntSlice(t *testing.T, expected []int, result []int, err string) {
+  match := true
+  if len(expected) != len(result) {
+    match = false
+  } else {
+    for i := 0; i < len(expected); i++ {
+      if expected[i] != result[i] {
+        match = false
+      }
+    }
+  }
+  checkState(t, match, err)
+}
+
+// Run a selection of basic regular expressions against this package.
 func TestSimpleRe(t *testing.T) {
   r := Parse("^(a|b)+c*$")
   checkState(t, !r.RunSimple("abd"), "not a valid match")
   checkState(t, r.RunSimple("a"), "basic string should match")
   checkState(t, !r.RunSimple(""), "empty string should not match")
   checkState(t, r.RunSimple("abcccc"), "longer string should match")
+}
+
+// Test closure expansion types, such as {..}, ?, +, * etc.
+func TestClosureExpansion(t *testing.T) {
+  r := Parse("^za?$")
+  checkState(t, r.RunSimple("z"), "should match none")
+  checkState(t, r.RunSimple("za"), "should match single")
+  checkState(t, !r.RunSimple("zaa"), "should not match more")
+
+  r = Parse("^a{2,2}$")
+  checkState(t, !r.RunSimple(""), "0 should fail")
+  checkState(t, !r.RunSimple("a"), "1 should fail")
+  checkState(t, r.RunSimple("aa"), "2 should succeed")
+  checkState(t, r.RunSimple("aaa"), "3 should succeed")
+  checkState(t, r.RunSimple("aaaa"), "4 should succeed")
+  checkState(t, !r.RunSimple("aaaaa"), "5 should fail")
+
+  r = Parse("^a{2}$")
+  checkState(t, !r.RunSimple(""), "0 should fail")
+  checkState(t, !r.RunSimple("a"), "1 should fail")
+  checkState(t, r.RunSimple("aa"), "2 should succeed")
+  checkState(t, !r.RunSimple("aaa"), "3 should fail")
+
+  r = Parse("^a{3,}$")
+  checkState(t, !r.RunSimple("aa"), "2 should fail")
+  checkState(t, r.RunSimple("aaa"), "3 should succeed")
+  checkState(t, r.RunSimple("aaaaaa"), "more should succeed")
+}
+
+// Test specific greedy/non-greedy closure types.
+func TestClosureGreedy(t *testing.T) {
+  r := Parse("^(a{0,2}?)(a*)$")
+  ok, res := r.RunSubMatch("aaa")
+  checkState(t, ok, "should match")
+  checkIntSlice(t, []int{0, 3, 0, 0, 0, 3}, res, "did not match expected")
+
+  r = Parse("^(a{0,2})?(a*)$")
+  ok, res = r.RunSubMatch("aaa")
+  checkState(t, ok, "should match")
+  checkIntSlice(t, []int{0, 3, 0, 2, 2, 3}, res, "did not match expected")
+
+  r = Parse("^(a{2,}?)(a*)$")
+  ok, res = r.RunSubMatch("aaa")
+  checkState(t, ok, "should match")
+  checkIntSlice(t, []int{0, 3, 0, 2, 2, 3}, res, "did not match expected")
 }
 
 // Test all rune classes, as defined in util.go.
