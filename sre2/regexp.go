@@ -32,13 +32,20 @@ const (
   kMatch                // success state!
 )
 
+// Escape constants and their mapping to actual Unicode runes.
+var (
+  ESCAPES = map[int]int {
+    'a': 7, 't': 9, 'n': 10, 'v': 11, 'f': 12, 'r': 13,
+  }
+)
+
 // Represents a single instruction in any regexp.
 type instr struct {
   idx int               // index of this instr
   mode byte             // mode (as above)
   out *instr            // next instr to process
   out1 *instr           // alt next instr (for kSplit)
-  rune runeclass        // rune class
+  rune *RuneClass       // rune class
   alt int               // identifier of alt branch (for kAlt{Begin,End})
   alt_id *string        // string identifier of alt branch
 }
@@ -142,19 +149,19 @@ func (p *parser) jump(pos int) int {
 // Return the literal string from->to some expected characters. Assumes that the
 // cursor is resting on the 'from' character. This method will return with the
 // cursor resting on the 'to' character, or on the final EOF (if not found).
-func (p *parser) literal(start int, end int) (result string, err bool) {
+func (p *parser) literal(start int, end int) string {
   if p.ch != start {
-    return "", true
+    panic(fmt.Sprintf("expected literal to start with: %c", start))
   }
 
-  result = ""
+  result := ""
   for p.nextc() != end {
     if p.ch == -1 {
-      return result, true
+      panic(fmt.Sprintf("expected literal to end with: %c", end))
     }
     result += fmt.Sprintf("%c", p.ch)
   }
-  return result, false
+  return result
 }
 
 // Helper method to connect instr 'from' to instr 'out'.
@@ -170,7 +177,7 @@ func (p *parser) out(from *instr, to *instr) {
 }
 
 // Consume some bracketed expression. At input, expects the cursor to be on '('
-// and will return with the cursor resting on the matching ')'.
+// and will return with the cursor just past the matching ')'.
 func (p *parser) alt() (start *instr, end *instr) {
   use_alts := true
   var alt_id *string
@@ -191,10 +198,7 @@ func (p *parser) alt() (start *instr, end *instr) {
     p.nextc()
     if p.ch == 'P' {
       p.nextc()
-      s, err := p.literal('<', '>')
-      if err {
-        panic("couldn't consume name in < >")
-      }
+      s := p.literal('<', '>')
       alt_id = &s
       p.nextc() // move past '>'
     } else {
@@ -234,6 +238,7 @@ func (p *parser) alt() (start *instr, end *instr) {
   if p.ch != ')' {
     panic("alt must end with ')'")
   }
+  p.nextc() // Step over the final bracket.
 
   alt_begin := p.instr()
   alt_begin.mode = kAltBegin
@@ -254,59 +259,137 @@ func (p *parser) alt() (start *instr, end *instr) {
 }
 
 // Consume a single character class and provide an implementation of the
-// runeclass interface. At input, expects the cursor to be on '[', and will
-// return on the closing ']'.
-// TODO: Handle all character terms, not bracketed expressions. This would
-// include terms such as \d, \t, etc as well as literal characters.
-func (p *parser) charclass() runeclass {
-  if p.ch != '[' {
-    panic("expect charclass to start with [")
-  }
-  p.nextc() // walk over '['
-
-  class := NewComplexRuneClass()
-  negate := false
-  if p.ch == '^' {
-    negate = !negate
+// runeclass interface. Will consume all characters that are part of definition.
+func (p *parser) class(within_class bool) (class *RuneClass) {
+  class = NewRuneClass()
+  switch p.ch {
+  case '.':
+    // TODO: only match newline in 's' mode
+    class.AddFunc(false, func(rune int) bool { return true })
     p.nextc()
-  }
-
-  outer: for {
-    switch p.ch {
-    case '[':
-      if p.nextc() != ':' {
-        panic("expected ascii class [:")
-      }
-      _, err := p.literal(':', ':')
-      if err {
-        panic("could not consume ascii class")
+  case '[':
+    if p.nextc() == ':' {
+      // Match an ASCII class name.
+      ascii_class := p.literal(':', ':')
+      negate := false
+      if ascii_class[0] == '^' {
+        negate = true
+        ascii_class = ascii_class[1:len(ascii_class)]
       }
       if p.nextc() != ']' {
-        panic("unclosed ascii class")
+        panic("expected closing of ascii class with ':]', got ':'")
       }
-    case ']':
-      // NOTE: caller expects us not to walk over last bracket.
-      break outer
-    case -1:
-      panic("unclosed character class")
-    }
 
-    rune := p.ch
-    r := make([]unicode.Range, 1)
-    if p.nextc() == '-' {
-      rune_end := p.nextc()
-      if rune >= rune_end {
-        panic(fmt.Sprintf("unexpected range: %c >= %c", rune, rune_end))
+      if ok := class.AddAsciiClass(negate, ascii_class); !ok {
+        panic(fmt.Sprintf("could not identify ascii class: %s", ascii_class))
       }
-      r[0] = unicode.Range{rune, rune_end, 1}
-      p.nextc() // walk past end of range
     } else {
-      r[0] = unicode.Range{rune, rune, 1}
+      if within_class {
+        panic("can't match a [...] class within another class")
+      }
+
+      negate := false
+      if p.ch == '^' {
+        negate = true
+        p.nextc()
+      }
+
+      for p.ch != ']' {
+        class.AddRuneClass(negate, p.class(true))
+      }
     }
-    if negate {
-      class.Exclude(r)
+    p.nextc() // Move over final ']'.
+  case '\\':
+    // Match some escaped character or escaped combination.
+    switch p.nextc() {
+    case 'x':
+      // Match hex character code.
+      var hex string
+      if p.nextc() == '{' {
+        hex = p.literal('{', '}')
+      } else {
+        hex = fmt.Sprintf("%c%c", p.ch, p.nextc())
+      }
+      p.nextc() // Step over the end of the hex code.
+
+      // Parse and return the corresponding rune.
+      rune, err := strconv.Btoui64(hex, 16)
+      if err != nil {
+        panic(fmt.Sprintf("couldn't parse hex: %s", hex))
+      }
+
+      class.AddRune(false, int(rune))
+    case 'p', 'P':
+      // Match a Unicode class name.
+      negate := (p.ch == 'P')
+      unicode_class := fmt.Sprintf("%c", p.nextc())
+      if unicode_class[0] == '{' {
+        unicode_class = p.literal('{', '}')
+      }
+      p.nextc() // Step over the end of the hex code.
+
+      // Find and return the class.
+      // TODO: use negate
+      if ok := class.AddUnicodeClass(negate, unicode_class); !ok {
+        panic(fmt.Sprintf("could not identify unicode class: %s", unicode_class))
+      }
+    case 'd', 'D':
+      // Match digits.
+      negate := (p.ch == 'D')
+      class.AddUnicodeClass(negate, "Nd")
+    case 's', 'S':
+      // Match whitespace.
+      negate := (p.ch == 'S')
+      class.AddAsciiClass(negate, "whitespace")
+    case 'w', 'W':
+      // Match word characters.
+      negate := (p.ch == 'W')
+      class.AddAsciiClass(negate, "word")
+    default:
+      if escape := ESCAPES[p.ch]; escape != 0 {
+        // Literally match '\n', '\r', etc.
+        class.AddRune(false, escape)
+        p.nextc()
+      } else if /* is punct */ false {
+        // Allow punctuation to be blindly escaped.
+        class.AddRune(false, p.ch)
+        p.nextc()
+      } else if unicode.IsDigit(p.ch) {
+        // Match octal character code (begins with digit, up to three digits).
+        oct := ""
+        for i := 0; i < 3; i++ {
+          oct += fmt.Sprintf("%c", p.ch)
+          if !unicode.IsDigit(p.nextc()) {
+            break
+          }
+        }
+
+        // Parse and return the corresponding rune.
+        rune, err := strconv.Btoui64(oct, 8)
+        if err != nil {
+          panic(fmt.Sprintf("couldn't parse oct: %s", oct))
+        }
+        class.AddRune(false, int(rune))
+      } else {
+        panic(fmt.Sprintf("unsupported escape type: \\%c", p.ch))
+      }
+    }
+  default:
+    // Match a single rune literal, or a range (when inside a character class).
+    // TODO: Sanity-check and disallow some punctuation.
+    rune := p.ch
+    if p.nextc() == '-' {
+      if !within_class {
+        panic(fmt.Sprintf("can't match a range outside class: %c-%c", rune, p.nextc()))
+      }
+      rune_high := p.nextc()
+      if rune_high < rune {
+        panic(fmt.Sprintf("unexpected range: %c >= %c", rune, rune_high))
+      }
+      p.nextc() // Step over the end of the range.
+      class.AddRuneRange(false, rune, rune_high)
     } else {
-      class.Include(r)
+      class.AddRune(false, rune)
     }
   }
 
@@ -317,56 +400,40 @@ func (p *parser) charclass() runeclass {
 // bracketed expression. When this function returns, the cursor will have moved
 // past the final rune in this term.
 func (p *parser) term() (start *instr, end *instr) {
-  start = p.instr()
-  end = start
-
   switch p.ch {
   case -1:
     panic("EOF in term")
   case '*', '+', '{', '?':
-    panic("unexpected expansion char")
+    panic(fmt.Sprintf("unexpected expansion char: %c", p.ch))
   case ')', '}', ']':
     panic("unexpected close element")
   case '(':
-    start, end = p.alt()
-  case '[':
-    start.mode = kRuneClass
-    start.rune = p.charclass()
+    return p.alt()
   case '$':
     panic("not yet supported: end of string")
   case '^':
     panic("not yet supported: start of string")
-  case '.':
-    start.mode = kRuneClass
-    start.rune = NewAnyRuneClass()
-  default:
-    ch := p.ch
-    if ch == '\\' {
-      switch p.nextc() {
-      case 'n':
-        ch = '\n'
-      case 't':
-        ch = '\t'
-      default:
-      panic("only expected \\n or \\t")
-      }
-    }
-
-    start.mode = kRuneClass
-    start.rune = NewSingleRuneClass(ch)
   }
-  p.nextc()
-  return start, end
+
+  // Try to consume a rune class.
+  start = p.instr()
+  start.mode = kRuneClass
+  start.rune = p.class(false)
+  return start, start
 }
 
 // Consume a closure, defined as (term[repitition]). When this function returns,
 // the cursor will be resting past the final rune in this closure.
 func (p *parser) closure() (start *instr, end *instr) {
-  term_pos := p.pos
+
+  // Store state of pos/alts in case we have to reparse term.
+  base_pos, base_alt := p.pos, p.re.alts
+
+  // Grab first term.
   start = p.instr()
   end = start
   t_start, t_end := p.term()
-  first := true
+  first := true // While true, we have a pending term.
 
   // Req and opt represent the number of required cases, and the number of
   // optional cases, respectively. Opt may be -1 to indicate no optional limit.
@@ -381,11 +448,8 @@ func (p *parser) closure() (start *instr, end *instr) {
   case '+':
     req, opt = 1, -1
   case '{':
-    r, err := p.literal('{', '}')
-    if err {
-      panic("couldn't consume repitition {}")
-    }
-    parts := strings.Split(r, ",", 2)
+    raw := p.literal('{', '}')
+    parts := strings.Split(raw, ",", 2)
     // TODO: handle malformed int
     req, _ = strconv.Atoi(parts[0])
     if len(parts) == 2 {
@@ -401,8 +465,7 @@ func (p *parser) closure() (start *instr, end *instr) {
   }
 
   if p.nextc() == '?' {
-    // TODO: explode if opt is 0?
-    greedy = false
+    greedy = !greedy
     p.nextc()
   }
   end_pos := p.pos
@@ -416,7 +479,8 @@ func (p *parser) closure() (start *instr, end *instr) {
     if first {
       first = false
     } else {
-      p.jump(term_pos)
+      p.jump(base_pos)
+      p.re.alts = base_alt
       t_start, t_end = p.term()
     }
     p.out(end, t_start)
@@ -428,7 +492,7 @@ func (p *parser) closure() (start *instr, end *instr) {
     if first {
       first = false
     } else {
-      p.jump(term_pos)
+      p.jump(base_pos)
       t_start, t_end = p.term()
     }
 
@@ -448,7 +512,7 @@ func (p *parser) closure() (start *instr, end *instr) {
       if first {
         first = false
       } else {
-        p.jump(term_pos)
+        p.jump(base_pos)
         t_start, t_end = p.term()
       }
 

@@ -3,58 +3,94 @@ package sre2
 
 import (
   "container/vector"
+  "fmt"
   "unicode"
 )
 
-// Generic rune matcher.
-type runeclass interface {
-  MatchRune(rune int) bool
-}
-
-// Rune class that matches any rune, i.e. "." regexp.
-type any_runeclass struct {}
-
-func (c any_runeclass) MatchRune(rune int) bool {
-  return true
-}
-
-func NewAnyRuneClass() runeclass {
-  return any_runeclass{}
-}
-
-// Rune class that matches a single positive rune.
-type single_runeclass struct {
-  rune int
-}
-
-func (c single_runeclass) MatchRune(rune int) bool {
-  return rune == c.rune
-}
-
-func NewSingleRuneClass(rune int) runeclass {
-  if rune <= 0 {
-    panic("expected non-zero positive rune")
-  }
-  return single_runeclass{rune}
-}
-
-// Complex rune class; may be used to represent a complete [...] character class
-// from regexp. Boils down to included and excluded rune sets.
-type complex_runeclass struct {
+// Generic rune matcher. Provides the single MatchRune method.
+type RuneClass struct {
   include vector.Vector
   exclude vector.Vector
 }
 
-func (c complex_runeclass) MatchRune(rune int) bool {
+func NewRuneClass() *RuneClass {
+  return &RuneClass{}
+}
+
+func (c *RuneClass) _Push(negate bool, v interface{}) {
+  if !negate {
+    c.include.Push(v)
+  } else {
+    c.exclude.Push(v)
+  }
+}
+
+func (c *RuneClass) AddRune(negate bool, rune int) {
+  c._Push(negate, rune)
+}
+
+func (c *RuneClass) AddFunc(negate bool, fn func(rune int) bool) {
+  c._Push(negate, fn)
+}
+
+func (c *RuneClass) AddRuneRange(negate bool, low int, high int) {
+  c._Push(negate, unicode.Range{low, high, 1})
+}
+
+func (c *RuneClass) AddUnicodeClass(negate bool, class string) bool {
+  found := false
+
+  if len(class) == 1 {
+    for key, r := range unicode.Categories {
+      if key[0] == class[0] {
+        found = true
+        c._Push(negate, r)
+      }
+    }
+  } else {
+    if r, ok := unicode.Categories[class]; ok {
+      c._Push(negate, r)
+      found = true
+    }
+    if r, ok := unicode.Properties[class]; ok {
+      c._Push(negate, r)
+      found = true
+    }
+    if r, ok := unicode.Scripts[class]; ok {
+      c._Push(negate, r)
+      found = true
+    }
+  }
+
+  return found
+}
+
+func (c *RuneClass) AddAsciiClass(negate bool, class string) bool {
+  v, found := ASCII[class]
+  if found {
+    c._Push(negate, v)
+  }
+  return found
+}
+
+func (c *RuneClass) AddRuneClass(negate bool, other *RuneClass) {
+  for _, v := range other.include {
+    c._Push(negate, v)
+  }
+  for _, v := range other.exclude {
+    c._Push(!negate, v)
+  }
+}
+
+func (c *RuneClass) MatchRune(rune int) bool {
   // Default is to match. If we find runes to include, then the default will
   // transition to false.
   result := true
 
   // Search through all included runes, and break if we find a match.
-  for _, raw := range c.include {
-    r, _ := raw.([]unicode.Range)
+  for _, v := range c.include {
     result = false
-    if unicode.Is(r, rune) {
+    if match(rune, v) {
       result = true
       break
     }
@@ -63,9 +99,8 @@ func (c complex_runeclass) MatchRune(rune int) bool {
   // If the result could be true, iterate through all excluded runes and fail
   // immediately if we find a counter-example.
   if result {
-    for _, raw := range c.exclude {
-      r, _ := raw.([]unicode.Range)
-      if unicode.Is(r, rune) {
+    for _, v := range c.exclude {
+      if match(rune, v) {
         result = false
         break
       }
@@ -75,26 +110,16 @@ func (c complex_runeclass) MatchRune(rune int) bool {
   return result
 }
 
-func (c *complex_runeclass) Include(r []unicode.Range) {
-  c.include.Push(r)
-}
-
-func (c *complex_runeclass) IncludeRune(rune int) {
-  r := make([]unicode.Range, 1)
-  r[0] = unicode.Range{rune, rune, 1}
-  c.include.Push(r)
-}
-
-func (c *complex_runeclass) Exclude(r []unicode.Range) {
-  c.exclude.Push(r)
-}
-
-func (c *complex_runeclass) ExcludeRune(rune int) {
-  r := make([]unicode.Range, 1)
-  r[0] = unicode.Range{rune, rune, 1}
-  c.exclude.Push(r)
-}
-
-func NewComplexRuneClass() complex_runeclass {
-  return complex_runeclass{make(vector.Vector, 0), make(vector.Vector, 0)}
+func match(rune int, v interface{}) bool {
+  switch x := v.(type) {
+  case int:
+    return x == rune
+  case func(rune int) bool:
+    return x(rune)
+  case unicode.Range:
+    return rune >= x.Lo && rune <= x.Hi && ((rune - x.Lo) % x.Stride == 0)
+  case []unicode.Range:
+    return unicode.Is(x, rune)
+  }
+  panic(fmt.Sprintf("unexpected: %s", v))
 }

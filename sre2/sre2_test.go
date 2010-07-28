@@ -3,7 +3,6 @@ package sre2
 
 import (
   "testing"
-  "unicode"
 )
 
 // Check the given state to be true.
@@ -35,6 +34,27 @@ func TestSimpleRe(t *testing.T) {
   checkState(t, r.RunSimple("a"), "basic string should match")
   checkState(t, !r.RunSimple(""), "empty string should not match")
   checkState(t, r.RunSimple("abcccc"), "longer string should match")
+}
+
+// Test behaviour related to character classes expressed within [...].
+func TestCharClass(t *testing.T) {
+  r := Parse("^[\t[:word:]]+$") // Match tabs and word characters.
+  checkState(t, r.RunSimple("c"), "non-space should match")
+  checkState(t, !r.RunSimple("c t"), "space should not match")
+  checkState(t, r.RunSimple("c\tt"), "tab should match")
+
+  r = Parse("^[:ascii:]*$")
+  checkState(t, r.RunSimple(""), "nothing should match")
+  checkState(t, r.RunSimple("c"), "ascii should match")
+  checkState(t, !r.RunSimple("Π"), "unicode should not match")
+
+  r = Parse("^\\pN$")
+  checkState(t, r.RunSimple("〩"), "character from Nl should match")
+  checkState(t, r.RunSimple("¾"), "character from Nu should match")
+
+  r = Parse("^\\p{Nl}$")
+  checkState(t, r.RunSimple("〩"), "character from Nl should match")
+  checkState(t, !r.RunSimple("¾"), "character from Nu should not match")
 }
 
 // Test closure expansion types, such as {..}, ?, +, * etc.
@@ -82,29 +102,36 @@ func TestClosureGreedy(t *testing.T) {
   checkIntSlice(t, []int{0, 3, 0, 2, 2, 3}, res, "did not match expected")
 }
 
-// Test all rune classes, as defined in util.go.
+// Test the behaviour of rune classes.
 func TestRuneClass(t *testing.T) {
-  c := NewSingleRuneClass('c')
-  checkState(t, c.MatchRune('c'), "should match c")
-  checkState(t, !c.MatchRune('d'), "should not match d")
+  c := NewRuneClass()
+  checkState(t, c.MatchRune('B'), "should implicitly match everything")
 
-  a := NewAnyRuneClass()
-  checkState(t, a.MatchRune(-1), "should match anything, even invalid runes")
-  checkState(t, a.MatchRune(1245), "should match anything")
+  c.AddRune(false, '#')
+  checkState(t, !c.MatchRune('B'), "should no longer implicitly match everything")
+  checkState(t, c.MatchRune('#'), "should match added rune")
 
-  cr := NewComplexRuneClass()
-  cr.Include(unicode.Greek)
-  cr.ExcludeRune('Π')
-  cr.IncludeRune('A')
-  checkState(t, !cr.MatchRune('Π'), "should not match pi")
-  checkState(t, cr.MatchRune('Ω'), "should match omega")
-  checkState(t, !cr.MatchRune('Z'), "should not match regular latin char")
-  checkState(t, cr.MatchRune('A'), "should match included latin char")
+  c.AddRuneRange(false, 'A', 'Z')
+  checkState(t, c.MatchRune('A'), "should match rune 'A' in range")
+  checkState(t, c.MatchRune('B'), "should match rune 'B' in range")
 
-  cr = NewComplexRuneClass()
-  cr.Exclude(unicode.Cyrillic)
-  checkState(t, cr.MatchRune('%'), "should match random char, class is exclude-only")
-  cr.IncludeRune('Ж')
-  checkState(t, !cr.MatchRune('%'), "should no longer match random char")
+  c.AddRuneRange(true, 'B', 'C')
+  checkState(t, c.MatchRune('A'), "should match rune 'A' in range")
+  checkState(t, !c.MatchRune('B'), "should not match rune 'B' in range")
+
+  c = NewRuneClass()
+  c.AddUnicodeClass(false, "Greek")
+  c.AddRune(true, 'Π')
+  c.AddRune(false, 'A')
+  checkState(t, !c.MatchRune('Π'), "should not match pi")
+  checkState(t, c.MatchRune('Ω'), "should match omega")
+  checkState(t, !c.MatchRune('Z'), "should not match regular latin char")
+  checkState(t, c.MatchRune('A'), "should match included latin char")
+
+  c = NewRuneClass()
+  c.AddUnicodeClass(true, "Cyrillic")
+  checkState(t, c.MatchRune('%'), "should match random char, class is exclude-only")
+  c.AddRune(false, '')
+  checkState(t, !c.MatchRune('%'), "should no longer match random char")
+  checkState(t, c.MatchRune(''), "should match single opt-in char")
 }
-
