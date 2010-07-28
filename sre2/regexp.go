@@ -329,7 +329,6 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
       p.nextc() // Step over the end of the hex code.
 
       // Find and return the class.
-      // TODO: use negate
       if ok := class.AddUnicodeClass(negate, unicode_class); !ok {
         panic(fmt.Sprintf("could not identify unicode class: %s", unicode_class))
       }
