@@ -2,6 +2,7 @@
 package sre2
 
 import (
+  "fmt"
   "testing"
 )
 
@@ -24,7 +25,7 @@ func checkIntSlice(t *testing.T, expected []int, result []int, err string) {
       }
     }
   }
-  checkState(t, match, err)
+  checkState(t, match, fmt.Sprintf("%s: got %s, expected %s", err, result, expected))
 }
 
 // Run a selection of basic regular expressions against this package.
@@ -34,6 +35,16 @@ func TestSimpleRe(t *testing.T) {
   checkState(t, r.RunSimple("a"), "basic string should match")
   checkState(t, !r.RunSimple(""), "empty string should not match")
   checkState(t, r.RunSimple("abcccc"), "longer string should match")
+
+  r = Parse("(\\w*)\\s*(\\w*)")
+  ok, res := r.RunSubMatch("zing hello there")
+  checkState(t, ok, "should match generally")
+  checkIntSlice(t, []int{0, 10, 0, 4, 5, 10}, res, "did not match first two words as expected")
+
+  r = Parse(".*?(\\w+)$")
+  ok, res = r.RunSubMatch("zing hello there")
+  checkState(t, ok, "should match generally")
+  checkIntSlice(t, []int{0, 16, 11, 16}, res, "did not match last word as expected")
 }
 
 // Test behaviour related to character classes expressed within [...].

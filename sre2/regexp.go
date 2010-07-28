@@ -334,14 +334,17 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
       }
     case 'd', 'D':
       // Match digits.
+      p.nextc()
       negate := (p.ch == 'D')
       class.AddUnicodeClass(negate, "Nd")
     case 's', 'S':
       // Match whitespace.
+      p.nextc()
       negate := (p.ch == 'S')
       class.AddAsciiClass(negate, "whitespace")
     case 'w', 'W':
       // Match word characters.
+      p.nextc()
       negate := (p.ch == 'W')
       class.AddAsciiClass(negate, "word")
     default:
@@ -421,6 +424,19 @@ func (p *parser) term() (start *instr, end *instr) {
   return start, start
 }
 
+// Safely retrieve a given term from the given position and alt count. If the
+// passed first is true, then set it to false and perform a no-op. Otherwise,
+// retrieve the new term.
+func (p *parser) safe_term(pos int, alt int, first *bool, start **instr, end **instr) {
+  if *first {
+    *first = false
+    return
+  }
+  p.jump(pos)
+  p.re.alts = alt
+  *start, *end = p.term()
+}
+
 // Consume a closure, defined as (term[repitition]). When this function returns,
 // the cursor will be resting past the final rune in this closure.
 func (p *parser) closure() (start *instr, end *instr) {
@@ -475,26 +491,14 @@ func (p *parser) closure() (start *instr, end *instr) {
 
   // Generate all required steps.
   for i := 0; i < req; i++ {
-    if first {
-      first = false
-    } else {
-      p.jump(base_pos)
-      p.re.alts = base_alt
-      t_start, t_end = p.term()
-    }
+    p.safe_term(base_pos, base_alt, &first, &t_start, &t_end)
+
     p.out(end, t_start)
     end = t_end
   }
 
   // Generate all optional steps.
   if opt == -1 {
-    if first {
-      first = false
-    } else {
-      p.jump(base_pos)
-      t_start, t_end = p.term()
-    }
-
     helper := p.instr()
     p.out(end, helper)
     if greedy {
@@ -502,18 +506,17 @@ func (p *parser) closure() (start *instr, end *instr) {
     } else {
       helper.out1 = t_start // optional step is 2nd preference
     }
-    p.out(t_end, helper)
+    if end != t_end {
+      // This is a little kludgy, but basically only wires up the term to the
+      // helper iff it hasn't already been done.
+      p.out(t_end, helper)
+    }
     end = helper
   } else {
     real_end := p.instr()
 
     for i := 0; i < opt; i++ {
-      if first {
-        first = false
-      } else {
-        p.jump(base_pos)
-        t_start, t_end = p.term()
-      }
+      p.safe_term(base_pos, base_alt, &first, &t_start, &t_end)
 
       helper := p.instr()
       p.out(end, helper)
@@ -643,7 +646,7 @@ func cleanup(prog []*instr) []*instr {
 // given input string.
 func Parse(src string) (r *sregexp) {
   // possibly expand this RE all the way to the left
-  if src[0] == '^' {
+  if len(src) > 0 && src[0] == '^' {
     src = "(" + src[1:len(src)]
   } else {
     src = ".*?(" + src

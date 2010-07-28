@@ -49,7 +49,7 @@ func (m *m_submatch) addstate(st *instr, a *altpos) {
  * as information on all submatches.
  */
 func (r *sregexp) RunSubMatch(src string) (bool, []int) {
-  states := len(r.prog)*4 // maximum number of states; should go away in optimisation
+  states := len(r.prog)*128 // maximum number of states; should go away in optimisation
   m := &m_submatch{make([]pair, 0, states), 0}
   m.addstate(r.prog[0], nil)
   curr := m.next
