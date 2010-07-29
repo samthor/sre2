@@ -1,9 +1,7 @@
 
 package sre2
 
-/**
- * Provides a storage mechanism for an ordered set of integer states.
- */
+// Provides a storage mechanism for an ordered set of integer states.
 type StateSet interface {
   Put(v int) bool       // put the given int into set, false if successful
   Get() []int           // get the entire set of states
@@ -11,10 +9,8 @@ type StateSet interface {
   Clear()               // clear the state set
 }
 
-/**
- * Create a new ordered bitset. States is the maximum state # that may be saved.
- * Size is the maximum number of states that may be saved.
- */
+// Create a new ordered bitset. States is the maximum state # that may be saved.
+// Size is the maximum number of states that may be saved.
 func NewStateSet(states int, size int) *StateSet {
   bwords := (states+31)>>5 // TODO: we just use lower 32 bits, even if int is int64
 

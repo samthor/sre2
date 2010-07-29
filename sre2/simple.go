@@ -1,13 +1,8 @@
 
 package sre2 
 
-/**
- * Simple regexp matcher entry point. Just returns true/false for matching re,
- * and completely ignores submatches.
- *
- * TODO: Eventually, this should still return the outer submatch, assuming all
- * re's are compiled as such: `.*(<re>).*`
- */
+// Simple regexp matcher entry point. Just returns true/false for matching re,
+// and completely ignores submatches.
 func (r *sregexp) RunSimple(src string) bool {
   curr := NewStateSet(len(r.prog), len(r.prog))
   next := NewStateSet(len(r.prog), len(r.prog))
@@ -41,10 +36,8 @@ func (r *sregexp) RunSimple(src string) bool {
   return false
 }
 
-/**
- * Helper method - just recurses through split/alt states and places them all
- * in the given StateSet.
- */
+// Helper method - just descends through split/alt states and places them all
+// in the given StateSet.
 func addstate(set *StateSet, st *instr) {
   if st == nil || set.Put(st.idx) {
     return // invalid

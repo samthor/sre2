@@ -39,21 +39,25 @@ func (m *m_submatch) addstate(st *instr, a *altpos) {
     // terminal, store (s.idx, altpos) in state
     // note that s.idx won't always be unique (but if both are equal, we could use this)
     pos := len(m.next)
+    if pos == cap(m.next) {
+      // out of storage, grow to hold onto more states
+      hold := m.next
+      m.next = make([]pair, pos, pos*2)
+      copy(m.next, hold)
+    }
     m.next = m.next[0:pos+1]
     m.next[pos] = pair{st.idx, a}
   }
 }
 
-/**
- * Submatch regexp matcher entry point. Must return both true/false as well
- * as information on all submatches.
- */
+// Submatch regexp matcher entry point. Must return both true/false as well
+// as information on all submatches.
 func (r *sregexp) RunSubMatch(src string) (bool, []int) {
-  states := len(r.prog)*128 // maximum number of states; should go away in optimisation
-  m := &m_submatch{make([]pair, 0, states), 0}
+  states_alloc := 64
+  m := &m_submatch{make([]pair, 0, states_alloc), 0}
   m.addstate(r.prog[0], nil)
   curr := m.next
-  m.next = make([]pair, 0, states)
+  m.next = make([]pair, 0, states_alloc)
 
   var ch int
   for _, ch = range src {
