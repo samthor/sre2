@@ -26,16 +26,19 @@ func (m *m_submatch) addstate(st *instr, a *altpos) {
   if st == nil {
     return // invalid
   }
-  if st.mode == kSplit {
+  switch st.mode {
+  case kSplit:
     m.addstate(st.out, a)
     m.addstate(st.out1, a)
-  } else if st.mode == kAltBegin {
+  case kAltBegin:
     a = &altpos{st.alt, false, m.npos, a}
     m.addstate(st.out, a)
-  } else if st.mode == kAltEnd {
+  case kAltEnd:
     a = &altpos{st.alt, true, m.npos, a}
     m.addstate(st.out, a)
-  } else {
+  case kLeftRight:
+    panic("no lr information yet for submatch")
+  default:
     // terminal, store (s.idx, altpos) in state
     // note that s.idx won't always be unique (but if both are equal, we could use this)
     pos := len(m.next)

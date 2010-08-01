@@ -28,8 +28,20 @@ const (
   kSplit = iota         // proceed down out & out1
   kAltBegin             // begin of alt section, i.e. '('
   kAltEnd               // end of alt section, i.e. ')'
+  kLeftRight            // match left/right runes here
   kRuneClass            // if match rune, proceed down out
   kMatch                // success state!
+)
+
+// Constants for kLeftRight, stored in 'instr.lr'.
+const (
+  bNone = iota
+  bBeginText            // beginning of text
+  bBeginLine            // beginning of text or line
+  bEndText              // end of text
+  bEndLine              // end of text or line
+  bWordBoundary         // ascii word boundary
+  bNotWordBoundary      // inverse of above, not ascii word boundary
 )
 
 // Escape constants and their mapping to actual Unicode runes.
@@ -43,9 +55,10 @@ var (
 type instr struct {
   idx int               // index of this instr
   mode byte             // mode (as above)
+  lr byte               // left-right mode (as above)
+  rune *RuneClass       // rune class
   out *instr            // next instr to process
   out1 *instr           // alt next instr (for kSplit)
-  rune *RuneClass       // rune class
   alt int               // identifier of alt branch (for kAlt{Begin,End})
   alt_id *string        // string identifier of alt branch
 }
@@ -73,6 +86,17 @@ func (i *instr) String() string {
     if i.alt_id != nil {
       str += fmt.Sprintf(" alt_id=%s", *i.alt_id)
     }
+  case kLeftRight:
+    var mode string
+    switch i.lr {
+    case bBeginText: mode = "bBeginText"
+    case bBeginLine: mode = "bBeginLine"
+    case bEndText: mode = "bEndText"
+    case bEndLine: mode = "bEndLine"
+    case bWordBoundary: mode = "bWordBoundary"
+    case bNotWordBoundary: mode = "bNotWordBoundary"
+    }
+    str += fmt.Sprintf(" kLeftRight [%s]", mode)
   case kRuneClass:
     str += fmt.Sprint(" kRuneClass ", i.rune)
   case kMatch:
@@ -84,6 +108,33 @@ func (i *instr) String() string {
 // Matcher method for consuming runes, thus only matches kRuneClass.
 func (s *instr) match(rune int) bool {
   return s.mode == kRuneClass && s.rune.MatchRune(rune)
+}
+
+// Matcher method for kLeftRight. If either left or right is not within the
+// target string, then -1 should be provided.
+func (s *instr) matchLeftRight(left int, right int) bool {
+  if s.mode != kLeftRight {
+    return false
+  }
+  switch s.lr {
+  case bBeginText:
+    return left == -1
+  case bBeginLine:
+    return left == -1 || left == '\n'
+  case bEndText:
+    return right == -1
+  case bEndLine:
+    return right == -1 || right == '\n'
+  case bWordBoundary, bNotWordBoundary:
+    // TODO: This is ASCII-only at this point.
+    wb := (unicode.Is(_word, left) && unicode.Is(_whitespace, right)) || (unicode.Is(_whitespace, left) && unicode.Is(_word, right))
+    if s.lr == bWordBoundary {
+      return wb
+    } else {
+      return !wb
+    }
+  }
+  panic("unexpected lr mode")
 }
 
 // Transient parser state, a combination of regexp and string iterator.
@@ -107,7 +158,7 @@ func (p *parser) instr() *instr {
     copy(p.re.prog, local)
   }
   p.re.prog = p.re.prog[0:pos+1]
-  i := &instr{pos, kSplit, nil, nil, nil, -1, nil}
+  i := &instr{pos, kSplit, bNone, nil, nil, nil, -1, nil}
   p.re.prog[pos] = i
   return i
 }
@@ -398,6 +449,14 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
   return class
 }
 
+// Build a left-right matcher of the given mode.
+func (p *parser) buildLeftRight(mode byte) *instr {
+  instr := p.instr()
+  instr.mode = kLeftRight
+  instr.lr = mode
+  return instr
+}
+
 // Consume a single term at the current cursor position. This may include a
 // bracketed expression. When this function returns, the cursor will have moved
 // past the final rune in this term.
@@ -412,11 +471,18 @@ func (p *parser) term() (start *instr, end *instr) {
   case '(':
     return p.alt()
   case '$':
-    panic("not yet supported: end of string")
+    // TODO: respect flag
+    p.nextc()
+    start = p.buildLeftRight(bBeginText)
+    return start, start
   case '^':
-    panic("not yet supported: start of string")
+    // TODO: respect flag
+    p.nextc()
+    start = p.buildLeftRight(bEndText)
+    return start, start
   }
 
+  // Peek forward to match terms that do not always consume a single rune.
   if p.ch == '\\' {
     pos := p.pos
     switch p.nextc() {
@@ -442,6 +508,22 @@ func (p *parser) term() (start *instr, end *instr) {
         end = instr
       }
       return start, end
+    case 'A':
+      p.nextc()
+      start = p.buildLeftRight(bBeginText)
+      return start, start
+    case 'z':
+      p.nextc()
+      start = p.buildLeftRight(bEndText)
+      return start, start
+    case 'b':
+      p.nextc()
+      start = p.buildLeftRight(bWordBoundary)
+      return start, start
+    case 'B':
+      p.nextc()
+      start = p.buildLeftRight(bNotWordBoundary)
+      return start, start
     }
 
     // We didn't find anything interesting: push back to the previous position.

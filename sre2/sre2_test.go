@@ -149,6 +149,15 @@ func TestClosureGreedy(t *testing.T) {
   checkIntSlice(t, []int{0, 3, 0, 2, 2, 3}, res, "did not match expected")
 }
 
+// Test simple left/right matchers.
+func TestLeftRight(t *testing.T) {
+  r := Parse("^.\\b.$")
+  checkState(t, r.RunSimple("a "), "left char is word")
+  checkState(t, r.RunSimple(" a"), "right char is word")
+  checkState(t, !r.RunSimple("  "), "not a boundary")
+  checkState(t, !r.RunSimple("aa"), "not a boundary")
+}
+
 // Test the behaviour of rune classes.
 func TestRuneClass(t *testing.T) {
   c := NewRuneClass()
