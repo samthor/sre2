@@ -352,7 +352,7 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
         // Literally match '\n', '\r', etc.
         class.AddRune(false, escape)
         p.nextc()
-      } else if /* is punct */ false {
+      } else if unicode.Is(_punct, p.ch) {
         // Allow punctuation to be blindly escaped.
         class.AddRune(false, p.ch)
         p.nextc()
