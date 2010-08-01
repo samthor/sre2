@@ -90,6 +90,20 @@ func TestEscapeSequences(t *testing.T) {
   }()
 }
 
+// Tests string literals between \Q...\E.
+func TestStringLiteral(t *testing.T) {
+  r := Parse("^\\Qhello\\E$")
+  checkState(t, r.RunSimple("hello"), "should match hello")
+
+  r = Parse("^\\Q.$\\\\E$") // match ".$\\"
+  checkState(t, r.RunSimple(".$\\"), "should match")
+  checkState(t, !r.RunSimple(" $\\"), "should not match")
+
+  r = Parse("^a\\Q\\E*b$") // match absolutely nothing between 'ab'
+  checkState(t, r.RunSimple("ab"), "should match")
+  checkState(t, !r.RunSimple("acb"), "should not match")
+}
+
 // Test closure expansion types, such as {..}, ?, +, * etc.
 func TestClosureExpansion(t *testing.T) {
   r := Parse("^za?$")

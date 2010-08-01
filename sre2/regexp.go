@@ -417,6 +417,37 @@ func (p *parser) term() (start *instr, end *instr) {
     panic("not yet supported: start of string")
   }
 
+  if p.ch == '\\' {
+    pos := p.pos
+    switch p.nextc() {
+    case 'Q':
+      // Match a string literal up to '\E'.
+      p.nextc()
+      i := strings.Index(p.src[p.pos:len(p.src)], "\\E")
+      if i == -1 {
+        panic("couldn't find \\E after \\Q")
+      }
+      literal := p.src[p.pos:p.pos+i]
+      p.jump(p.pos + i + 2)
+
+      start = p.instr()
+      end = start
+      for _, ch := range literal {
+        instr := p.instr()
+        instr.mode = kRuneClass
+        instr.rune = NewRuneClass()
+        instr.rune.AddRune(false, ch)
+
+        p.out(end, instr)
+        end = instr
+      }
+      return start, end
+    }
+
+    // We didn't find anything interesting: push back to the previous position.
+    p.jump(pos)
+  }
+
   // Try to consume a rune class.
   start = p.instr()
   start.mode = kRuneClass
@@ -567,6 +598,8 @@ func (p *parser) regexp() (start *instr, end *instr) {
 // slice may potentially be smaller.
 func cleanup(prog []*instr) []*instr {
   // Detect kSplit recursion. We can remove this and convert it to a single path.
+  // This might happen in cases where we loop over some instructions which are
+  // not matchers, e.g. \Q\E*.
   states := NewStateSet(len(prog), len(prog))
   for i := 1; i < len(prog); i++ {
     states.Clear()
@@ -575,9 +608,7 @@ func cleanup(prog []*instr) []*instr {
     fn = func(ci *instr) bool {
       if ci != nil && ci.mode == kSplit {
         if states.Put(ci.idx) {
-          // NOTE: I'm not sure if this will ever happen. Panic for now. If we're
-          // confident this won't happen, we could move the panic to runtime.
-          panic("regexp should never loop")
+          // We've found a recursion.
           return true
         }
         if fn(ci.out) {
