@@ -758,18 +758,24 @@ func cleanup(prog []*instr) []*instr {
 // Generates a simple, straight-forward NFA. Matches an entire regexp from the
 // given input string.
 func Parse(src string) (r *sregexp) {
-  // possibly expand this RE all the way to the left
-  if len(src) > 0 && src[0] == '^' {
-    src = "(" + src[1:len(src)]
-  } else {
-    src = ".*?(" + src
-  }
 
-  // possibly expand this RE to the right
-  if src[len(src)-1] == '$' {
-    src = src[0:len(src)-1] + ")"
+  if false {
+    // TODO: reenable this when submatch handles LR matches
+    src = ".*?(" + src + ").*?"
   } else {
-    src = src + ").*?"
+    // possibly expand this RE all the way to the left
+    if len(src) > 0 && src[0] == '^' {
+      src = "(" + src[1:len(src)]
+    } else {
+      src = ".*?(" + src
+    }
+
+    // possibly expand this RE to the right
+    if src[len(src)-1] == '$' {
+      src = src[0:len(src)-1] + ")"
+    } else {
+      src = src + ").*?"
+    }
   }
 
   re := &sregexp{make([]*instr, 0, 1), 0}
