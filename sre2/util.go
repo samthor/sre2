@@ -1,6 +1,10 @@
 
 package sre2
 
+import (
+  "utf8"
+)
+
 // Provides a storage mechanism for an ordered set of integer states.
 type StateSet interface {
   Put(v int) bool       // put the given int into set, false if successful
@@ -64,4 +68,44 @@ func (o *obitset) Clear() {
     o.bits[i] = 0
   }
   o.pos = 0
+}
+
+func NewStringParser(src string) *sparser {
+  var next int
+  if len(src) > 0 {
+    next, _ = utf8.DecodeRuneInString(src)
+  } else {
+    next = -1
+  }
+  return &sparser{src, -1, -1, next}
+}
+
+type sparser struct {
+  src string
+  pos int
+  curr int
+  next int
+}
+
+func (s *sparser) nextc() int {
+  if s.pos == -1 {
+    s.pos = 0
+  } else if s.curr != -1 {
+    s.pos += utf8.RuneLen(s.curr)
+  } else {
+    return -1
+  }
+
+  s.curr = s.next
+  if s.pos < len(s.src) {
+    npos := s.pos + utf8.RuneLen(s.curr)
+    if npos < len(s.src) {
+      s.next, _ = utf8.DecodeRuneInString(s.src[npos:len(s.src)])
+    } else {
+      s.next = -1
+    }
+    return s.curr
+  }
+
+  return -1
 }

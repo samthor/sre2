@@ -473,12 +473,12 @@ func (p *parser) term() (start *instr, end *instr) {
   case '$':
     // TODO: respect flag
     p.nextc()
-    start = p.buildLeftRight(bBeginText)
+    start = p.buildLeftRight(bEndText)
     return start, start
   case '^':
     // TODO: respect flag
     p.nextc()
-    start = p.buildLeftRight(bEndText)
+    start = p.buildLeftRight(bBeginText)
     return start, start
   }
 
@@ -759,7 +759,7 @@ func cleanup(prog []*instr) []*instr {
 // given input string.
 func Parse(src string) (r *sregexp) {
 
-  if false {
+  if true {
     // TODO: reenable this when submatch handles LR matches
     src = ".*?(" + src + ").*?"
   } else {

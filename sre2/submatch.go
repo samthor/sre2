@@ -18,6 +18,7 @@ type pair struct {
 }
 
 type m_submatch struct {
+  parser *sparser
   next []pair
   npos int              // next string index
 }
@@ -37,7 +38,9 @@ func (m *m_submatch) addstate(st *instr, a *altpos) {
     a = &altpos{st.alt, true, m.npos, a}
     m.addstate(st.out, a)
   case kLeftRight:
-    panic("no lr information yet for submatch")
+    if st.matchLeftRight(m.parser.curr, m.parser.next) {
+      m.addstate(st.out, a)
+    }
   default:
     // terminal, store (s.idx, altpos) in state
     // note that s.idx won't always be unique (but if both are equal, we could use this)
@@ -57,13 +60,16 @@ func (m *m_submatch) addstate(st *instr, a *altpos) {
 // as information on all submatches.
 func (r *sregexp) RunSubMatch(src string) (bool, []int) {
   states_alloc := 64
-  m := &m_submatch{make([]pair, 0, states_alloc), 0}
+  m := &m_submatch{NewStringParser(src), make([]pair, 0, states_alloc), 0}
   m.addstate(r.prog[0], nil)
   curr := m.next
   m.next = make([]pair, 0, states_alloc)
 
-  var ch int
-  for _, ch = range src {
+  for {
+    ch := m.parser.nextc()
+    if ch == -1 {
+      break
+    }
     m.npos += utf8.RuneLen(ch)
 
     // move along rune paths
