@@ -143,6 +143,7 @@ type parser struct {
   src string
   ch int
   pos int
+  flags int64
 }
 
 // Generate a new instruction struct for use in regexp. By default, the instr
@@ -197,6 +198,14 @@ func (p *parser) jump(pos int) int {
   return p.ch
 }
 
+// Determine whether the given flag is set.
+func (p *parser) flag(flag int) bool {
+  if flag < 64 || flag > 127 {
+    panic(fmt.Sprintf("can't check flag, out of range: %c", flag))
+  }
+  return (p.flags | (1<<byte(flag))) != 0
+}
+
 // Return the literal string from->to some expected characters. Assumes that the
 // cursor is resting on the 'from' character. This method will return with the
 // cursor resting on the 'to' character, or on the final EOF (if not found).
@@ -227,48 +236,33 @@ func (p *parser) out(from *instr, to *instr) {
   }
 }
 
-// Consume some bracketed expression. At input, expects the cursor to be on '('
-// and will return with the cursor just past the matching ')'.
-func (p *parser) alt() (start *instr, end *instr) {
-  use_alts := true
-  var alt_id *string
-  altpos := p.re.alts
-  p.re.alts += 1
-
-  if p.ch != '(' {
-    panic("alt must start with '('")
-  }
+// Consume some alternate regexps. That is, (regexp[|regexp][|regexp]...).
+// This method will return when it encounters an outer ')', and the cursor
+// will rest on that character.
+func (p *parser) alt(alt_id string, capture bool) (start *instr, end *instr) {
+  // Hold onto the current set of flags; reset after.
+  old_flags := p.flags
+  defer func() {
+    p.flags = old_flags
+  }()
 
   end = p.instr() // shared end state for alt
-  end.mode = kAltEnd
-  end.alt = altpos
+  alt_begin := p.instr()
 
-  p.nextc()
-  if p.ch == '?' {
-    // TODO: it might be appropriate to move this whole logic outside of alt().
-    p.nextc()
-    if p.ch == 'P' {
-      p.nextc()
-      s := p.literal('<', '>')
-      alt_id = &s
-      p.nextc() // move past '>'
-    } else {
-      // anything but 'P' means flags (unmatched).
-      use_alts = false
-      outer: for {
-        switch p.ch {
-        case ':':
-          p.nextc() // move past ':'
-          break outer // no more flags, process re
-        case ')':
-          panic("can't yet apply flags to outer")
-          break outer // no more flags, ignore re, apply flags to outer
-        default:
-          panic(fmt.Sprint("flag unsupported:", p.ch))
-        }
-        p.nextc()
-      }
+  // Optionally mark this as a capturing group.
+  if capture {
+    alt_begin.mode = kAltBegin
+    alt_begin.alt = p.re.alts
+    end.mode = kAltEnd
+    end.alt = p.re.alts
+
+    if alt_id != "" {
+      alt_begin.alt_id = &alt_id
+      end.alt_id = &alt_id
     }
+
+    // Increment alt counter.
+    p.re.alts += 1
   }
 
   b_start, b_end := p.regexp()
@@ -286,25 +280,13 @@ func (p *parser) alt() (start *instr, end *instr) {
     b_start = start
   }
 
+  // Note: We don't move over this final bracket.
   if p.ch != ')' {
     panic("alt must end with ')'")
   }
-  p.nextc() // Step over the final bracket.
 
-  alt_begin := p.instr()
-  alt_begin.mode = kAltBegin
-  alt_begin.alt = altpos
+  // Wire up the start of this alt to the first regexp part.
   p.out(alt_begin, start)
-
-  if !use_alts {
-    // clear alts, this is an unmatched group
-    alt_begin.mode = kSplit
-    end.mode = kSplit
-  } else if alt_id != nil {
-    // set alt string id
-    alt_begin.alt_id = alt_id
-    end.alt_id = alt_id
-  }
 
   return alt_begin, end
 }
@@ -315,8 +297,12 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
   class = NewRuneClass()
   switch p.ch {
   case '.':
-    // TODO: only match newline in 's' mode
-    class.AddFunc(false, func(rune int) bool { return true })
+    // TODO: this is a fairly heavyweight opt-in method
+    if p.flag('s') {
+      class.AddFunc(false, func(rune int) bool { return true })
+    } else {
+      class.AddFunc(false, func(rune int) bool { return rune != '\n' })
+    }
     p.nextc()
   case '[':
     if p.nextc() == ':' {
@@ -469,16 +455,71 @@ func (p *parser) term() (start *instr, end *instr) {
   case ')', '}', ']':
     panic("unexpected close element")
   case '(':
-    return p.alt()
-  case '$':
-    // TODO: respect flag
+    capture := true
+    alt_id := ""
+    old_flags := p.flags
+    if p.nextc() == '?' {
+      // Do something interesting before descending into this alt.
+      p.nextc()
+      if p.ch == 'P' {
+        p.nextc() // move to '<'
+        alt_id = p.literal('<', '>')
+        p.nextc() // move past '>'
+      } else {
+        // anything but 'P' means flags (and, non-captured).
+        capture = false
+        set := true
+        outer: for {
+          switch p.ch {
+          case ':':
+            p.nextc() // move past ':'
+            break outer // no more flags, process re
+          case ')':
+            // Return immediately: there's no instructions here, just flag sets!
+            p.nextc()
+            start = p.instr()
+            return start, start
+          case '-':
+            // now we're clearing flags
+            set = false
+          default:
+            if p.ch < 64 && p.ch > 127 {
+              panic(fmt.Sprintf("flag not in range: %c", p.ch))
+            }
+            flag := byte(p.ch - 64)
+            if set {
+              p.flags |= (1<<flag)
+            } else {
+              p.flags &= ^(1<<flag)
+            }
+          }
+          p.nextc()
+        }
+      }
+    }
+
+    start, end = p.alt(alt_id, capture)
+    if p.ch != ')' {
+      panic("alt should finish on end bracket")
+    }
     p.nextc()
-    start = p.buildLeftRight(bEndText)
+    p.flags = old_flags
+    return start, end
+  case '$':
+    var mode byte = bEndText
+    if p.flag('m') {
+      mode = bEndLine
+    }
+    p.nextc()
+    start = p.buildLeftRight(mode)
     return start, start
   case '^':
-    // TODO: respect flag
+    var mode byte = bBeginText
+    if p.flag('m') {
+      mode = bBeginLine
+    }
     p.nextc()
-    start = p.buildLeftRight(bBeginText)
+    start = p.buildLeftRight(mode)
     return start, start
   }
 
@@ -534,6 +575,12 @@ func (p *parser) term() (start *instr, end *instr) {
   start = p.instr()
   start.mode = kRuneClass
   start.rune = p.class(false)
+
+  if p.flag('i') {
+    // Mark this class as case-insensitive.
+    start.rune.ignore_case = true
+  }
+
   return start, start
 }
 
@@ -567,7 +614,13 @@ func (p *parser) closure() (start *instr, end *instr) {
   // optional cases, respectively. Opt may be -1 to indicate no optional limit.
   var req int
   var opt int
-  greedy := true // Greedily choose an optional step over continuing.
+
+  // By default, greedily choose an optional step over continuing. If 'U' is
+  // flagged, swap this behaviour.
+  greedy := true
+  if p.flag('U') {
+    greedy = false
+  }
   switch p.ch {
   case '?':
     req, opt = 0, 1
@@ -779,7 +832,7 @@ func Parse(src string) (r *sregexp) {
   }
 
   re := &sregexp{make([]*instr, 0, 1), 0}
-  p := parser{re, src, -1, -1}
+  p := parser{re, src, -1, -1, 0}
   begin := p.instr()
   match := p.instr()
   match.mode = kMatch

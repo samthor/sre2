@@ -158,6 +158,21 @@ func TestLeftRight(t *testing.T) {
   checkState(t, !r.RunSimple("aa"), "not a boundary")
 }
 
+// Test general flags in sre2.
+func TestFlags(t *testing.T) {
+  r := Parse("^(?i:AbC)zz$")
+  checkState(t, r.RunSimple("abczz"), "success")
+  checkState(t, !r.RunSimple("abcZZ"), "fail, flag should not escape")
+  ok, res := r.RunSubMatch("ABCzz")
+  checkState(t, ok, "should pass")
+  checkIntSlice(t, []int{0,5}, res, "should just have a single outer paren")
+
+  r = Parse("^(?U)(a+)(.+)$")
+  ok, res = r.RunSubMatch("aaaabb")
+  checkState(t, ok, "should pass")
+  checkIntSlice(t, []int{0,6,0,1,1,6}, res, "should be ungreedy")
+}
+
 // Test the behaviour of rune classes.
 func TestRuneClass(t *testing.T) {
   c := NewRuneClass()

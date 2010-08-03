@@ -9,6 +9,7 @@ import (
 
 // Generic rune matcher. Provides the single MatchRune method.
 type RuneClass struct {
+  ignore_case bool
   include vector.Vector
   exclude vector.Vector
 }
@@ -86,11 +87,16 @@ func (c *RuneClass) MatchRune(rune int) bool {
   // Default is to match. If we find runes to include, then the default will
   // transition to false.
   result := true
+  lrune := rune
+  if c.ignore_case {
+    lrune = unicode.ToLower(rune)
+    rune = unicode.ToUpper(rune)
+  }
 
   // Search through all included runes, and break if we find a match.
   for _, v := range c.include {
     result = false
-    if match(rune, v) {
+    if match(rune, v) || (lrune != rune && match(lrune, v)) {
       result = true
       break
     }
@@ -100,7 +106,7 @@ func (c *RuneClass) MatchRune(rune int) bool {
   // immediately if we find a counter-example.
   if result {
     for _, v := range c.exclude {
-      if match(rune, v) {
+      if match(rune, v) || (lrune != rune && match(lrune, v)) {
         result = false
         break
       }
