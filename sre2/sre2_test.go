@@ -171,6 +171,10 @@ func TestFlags(t *testing.T) {
   ok, res = r.RunSubMatch("aaaabb")
   checkState(t, ok, "should pass")
   checkIntSlice(t, []int{0,6,0,1,1,6}, res, "should be ungreedy")
+
+  r = Parse("^(?i)a*(?-i)b*$")
+  checkState(t, r.RunSimple("AAaaAAaabbbbb"), "success")
+  checkState(t, !r.RunSimple("AAaaAAaaBBBa"), "should fail, flag should not escape")
 }
 
 // Test the behaviour of rune classes.
