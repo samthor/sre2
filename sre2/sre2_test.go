@@ -96,16 +96,9 @@ func TestEscapeSequences(t *testing.T) {
   r = MustParse("^\\x{03a0}\\x25$") // Match 'Π%'.
   checkState(t, r.RunSimple("Π%"), "should match pi+percent")
 
-  func() {
-    defer func() {
-      if r := recover(); r != nil {
-        // ok
-      } else {
-        t.Error("should have panic()ed on trying to escape Π, not punctuation")
-      }
-    }()
-    r = MustParse("^\\Π$")
-  }()
+  r, err := Parse("^\\Π$")
+  checkState(t, err != nil && r == nil,
+      "should have failed on trying to escape Π, not punctuation")
 }
 
 // Tests string literals between \Q...\E.
