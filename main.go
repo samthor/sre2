@@ -27,7 +27,7 @@ func main() {
 
   if !*mode {
     // use new regexp impl
-    r := sre2.Parse(*re)
+    r := sre2.MustParse(*re)
     r.DebugOut()
 
     result := false

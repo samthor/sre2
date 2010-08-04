@@ -809,12 +809,24 @@ func cleanup(prog []*instr) []*instr {
 }
 
 // Generates a simple, straight-forward NFA. Matches an entire regexp from the
-// given input string.
-func Parse(src string) (r *sregexp) {
-  src = ".*?(" + src + ").*?"
+// given input string. If the regexp could not be parsed, returns a non-nil
+// error string: the regexp will be nil in this case.
+func Parse(src string) (re *sregexp, err *string) {
+  defer func() {
+    if r := recover(); r != nil {
+      re = nil // clear re so it can't be used by caller
+      switch x := r.(type) {
+      case string:
+        response := fmt.Sprintf("could not parse `%s`, error: %s", src, x)
+        err = &response
+      default:
+        panic(fmt.Sprint("unknown parse error: ", r))
+      }
+    }
+  }()
 
-  re := &sregexp{make([]*instr, 0, 1), 0}
-  p := parser{re, src, -1, -1, 0}
+  re = &sregexp{make([]*instr, 0, 1), 0}
+  p := parser{re, ".*?(" + src + ").*?", -1, -1, 0}
   begin := p.instr()
   match := p.instr()
   match.mode = kMatch
@@ -830,5 +842,16 @@ func Parse(src string) (r *sregexp) {
   p.out(end, match)
 
   re.prog = cleanup(re.prog)
+  return
+}
+
+// Generates a NFA from the given source. If the regexp could not be parsed,
+// panics with a string error.
+func MustParse(src string) *sregexp {
+  re, err := Parse(src)
+  if err != nil {
+    panic(err)
+  }
   return re
 }
+
