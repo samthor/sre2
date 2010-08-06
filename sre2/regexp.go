@@ -23,38 +23,31 @@ func (r *sregexp) DebugOut() {
 }
 
 // Instruction type definitions, for "instr.mode".
-const (
-  kSplit = iota         // proceed down out & out1
-  kAltBegin             // begin of alt section, i.e. '('
-  kAltEnd               // end of alt section, i.e. ')'
-  kLeftRight            // match left/right runes here
-  kRuneClass            // if match rune, proceed down out
-  kMatch                // success state!
+type instrMode byte; const (
+  kSplit instrMode = iota // proceed down out & out1
+  kAltBegin  // begin of alt section, i.e. '('
+  kAltEnd    // end of alt section, i.e. ')'
+  kLeftRight // match left/right runes here
+  kRuneClass // if match rune, proceed down out
+  kMatch     // success state!
 )
 
 // Constants for kLeftRight, stored in 'instr.lr'.
-const (
-  bNone = iota
-  bBeginText            // beginning of text
-  bBeginLine            // beginning of text or line
-  bEndText              // end of text
-  bEndLine              // end of text or line
-  bWordBoundary         // ascii word boundary
-  bNotWordBoundary      // inverse of above, not ascii word boundary
-)
-
-// Escape constants and their mapping to actual Unicode runes.
-var (
-  ESCAPES = map[int]int {
-    'a': 7, 't': 9, 'n': 10, 'v': 11, 'f': 12, 'r': 13,
-  }
+type boundaryMode byte; const (
+  bNone boundaryMode = iota
+  bBeginText       // beginning of text
+  bBeginLine       // beginning of text or line
+  bEndText         // end of text
+  bEndLine         // end of text or line
+  bWordBoundary    // ascii word boundary
+  bNotWordBoundary // inverse of above, not ascii word boundary
 )
 
 // Represents a single instruction in any regexp.
 type instr struct {
   idx int               // index of this instr
-  mode byte             // mode (as above)
-  lr byte               // left-right mode (as above)
+  mode instrMode        // mode (as above)
+  lr boundaryMode       // left-right mode (as above)
   rune *RuneClass       // rune class
   out *instr            // next instr to process
   out1 *instr           // alt next instr (for kSplit)
@@ -111,7 +104,7 @@ func (s *instr) match(rune int) bool {
 
 // Matcher method for kLeftRight. If either left or right is not within the
 // target string, then -1 should be provided.
-func (s *instr) matchLeftRight(left int, right int) bool {
+func (s *instr) matchBoundaryMode(left int, right int) bool {
   if s.mode != kLeftRight {
     return false
   }
@@ -135,6 +128,13 @@ func (s *instr) matchLeftRight(left int, right int) bool {
   }
   panic("unexpected lr mode")
 }
+
+// Escape constants and their mapping to actual Unicode runes.
+var (
+  ESCAPES = map[int]int {
+    'a': 7, 't': 9, 'n': 10, 'v': 11, 'f': 12, 'r': 13,
+  }
+)
 
 // Transient parser state, a combination of regexp and string iterator.
 type parser struct {
@@ -382,7 +382,7 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
 }
 
 // Build a left-right matcher of the given mode.
-func (p *parser) buildLeftRight(mode byte) *instr {
+func (p *parser) makeBoundaryInstr(mode boundaryMode) *instr {
   instr := p.instr()
   instr.mode = kLeftRight
   instr.lr = mode
@@ -451,20 +451,20 @@ func (p *parser) term() (start *instr, end *instr) {
     p.flags = old_flags
     return start, end
   case '$':
-    var mode byte = bEndText
+  	mode := bEndText
     if p.flag('m') {
       mode = bEndLine
     }
     p.src.nextCh()
-    start = p.buildLeftRight(mode)
+    start = p.makeBoundaryInstr(mode)
     return start, start
   case '^':
-    var mode byte = bBeginText
+    mode := bBeginText
     if p.flag('m') {
       mode = bBeginLine
     }
     p.src.nextCh()
-    start = p.buildLeftRight(mode)
+    start = p.makeBoundaryInstr(mode)
     return start, start
   }
 
@@ -489,19 +489,19 @@ func (p *parser) term() (start *instr, end *instr) {
       return start, end
     case 'A':
       p.src.nextCh()
-      start = p.buildLeftRight(bBeginText)
+      start = p.makeBoundaryInstr(bBeginText)
       return start, start
     case 'z':
       p.src.nextCh()
-      start = p.buildLeftRight(bEndText)
+      start = p.makeBoundaryInstr(bEndText)
       return start, start
     case 'b':
       p.src.nextCh()
-      start = p.buildLeftRight(bWordBoundary)
+      start = p.makeBoundaryInstr(bWordBoundary)
       return start, start
     case 'B':
       p.src.nextCh()
-      start = p.buildLeftRight(bNotWordBoundary)
+      start = p.makeBoundaryInstr(bNotWordBoundary)
       return start, start
     }
 

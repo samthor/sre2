@@ -51,7 +51,7 @@ func addstate(set *StateSet, st *instr, p SafeReader) {
     // ignore, just walk over
     addstate(set, st.out, p)
   case kLeftRight:
-    if st.matchLeftRight(p.curr(), p.peek()) {
+    if st.matchBoundaryMode(p.curr(), p.peek()) {
       addstate(set, st.out, p)
     }
   }

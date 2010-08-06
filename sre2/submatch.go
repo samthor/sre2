@@ -31,7 +31,7 @@ func (m *m_submatch) addstate(st *instr, a *altpos) {
   case kAltEnd:
     m.addstate(st.out, &altpos{st.alt, true, m.parser.npos(), a})
   case kLeftRight:
-    if st.matchLeftRight(m.parser.curr(), m.parser.peek()) {
+    if st.matchBoundaryMode(m.parser.curr(), m.parser.peek()) {
       m.addstate(st.out, a)
     }
   default:
