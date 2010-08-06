@@ -30,7 +30,11 @@ func checkIntSlice(t *testing.T, expected []int, result []int, err string) {
 
 // Run a selection of basic regular expressions against this package.
 func TestSimpleRe(t *testing.T) {
-  r := MustParse("^(a|b)+c*$")
+  r := MustParse("")
+  checkState(t, r.RunSimple(""), "everything should match")
+  checkState(t, r.RunSimple("fadsnjkflsdafnas"), "everything should match")
+
+  r = MustParse("^(a|b)+c*$")
   checkState(t, !r.RunSimple("abd"), "not a valid match")
   checkState(t, r.RunSimple("a"), "basic string should match")
   checkState(t, !r.RunSimple(""), "empty string should not match")
@@ -220,4 +224,17 @@ func TestRuneClass(t *testing.T) {
   c.AddRune(false, '')
   checkState(t, !c.MatchRune('%'), "should no longer match random char")
   checkState(t, c.MatchRune(''), "should match single opt-in char")
+}
+
+// Test the SafeParser used by much of the code.
+func TestStringParser(t *testing.T) {
+  src := NewSafeReader("a{bc}d")
+
+  checkState(t, src.curr() == -1, "should not yet be parsing")
+  checkState(t, src.nextCh() == 'a', "first char should be a")
+  checkState(t, src.nextCh() == '{', "second char should be {")
+  lit := src.literal("{", "}")
+  checkState(t, lit == "bc", "should equal contained value, got: " + lit)
+  checkState(t, src.curr() == 'd', "should now rest on d")
+  checkState(t, src.nextCh() == -1, "should be done now")
 }

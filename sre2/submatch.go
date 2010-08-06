@@ -1,10 +1,6 @@
 
 package sre2
 
-import (
-  "utf8"
-)
-
 type altpos struct {
   alt int               // alt index
   is_end bool           // end (true) or begin (false)
@@ -18,9 +14,8 @@ type pair struct {
 }
 
 type m_submatch struct {
-  parser *sparser
+  parser SafeReader
   next []pair
-  npos int              // next string index
 }
 
 func (m *m_submatch) addstate(st *instr, a *altpos) {
@@ -32,13 +27,11 @@ func (m *m_submatch) addstate(st *instr, a *altpos) {
     m.addstate(st.out, a)
     m.addstate(st.out1, a)
   case kAltBegin:
-    a = &altpos{st.alt, false, m.npos, a}
-    m.addstate(st.out, a)
+    m.addstate(st.out, &altpos{st.alt, false, m.parser.npos(), a})
   case kAltEnd:
-    a = &altpos{st.alt, true, m.npos, a}
-    m.addstate(st.out, a)
+    m.addstate(st.out, &altpos{st.alt, true, m.parser.npos(), a})
   case kLeftRight:
-    if st.matchLeftRight(m.parser.curr, m.parser.next) {
+    if st.matchLeftRight(m.parser.curr(), m.parser.peek()) {
       m.addstate(st.out, a)
     }
   default:
@@ -60,17 +53,13 @@ func (m *m_submatch) addstate(st *instr, a *altpos) {
 // as information on all submatches.
 func (r *sregexp) RunSubMatch(src string) (bool, []int) {
   states_alloc := 64
-  m := &m_submatch{NewStringParser(src), make([]pair, 0, states_alloc), 0}
+  m := &m_submatch{NewSafeReader(src), make([]pair, 0, states_alloc)}
   m.addstate(r.prog[0], nil)
   curr := m.next
   m.next = make([]pair, 0, states_alloc)
 
-  for {
-    ch := m.parser.nextc()
-    if ch == -1 {
-      break
-    }
-    m.npos += utf8.RuneLen(ch)
+  for m.parser.nextCh() != -1 {
+    ch := m.parser.curr()
 
     // move along rune paths
     for _, p := range curr {

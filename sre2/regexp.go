@@ -7,7 +7,6 @@ import (
   "strconv"
   "strings"
   "unicode"
-  "utf8"
 )
 
 // Regexp definition. Simple, just a list of states and a number of alts.
@@ -140,9 +139,7 @@ func (s *instr) matchLeftRight(left int, right int) bool {
 // Transient parser state, a combination of regexp and string iterator.
 type parser struct {
   re *sregexp
-  src string
-  ch int
-  pos int
+  src SafeReader
   flags int64
 }
 
@@ -164,64 +161,12 @@ func (p *parser) instr() *instr {
   return i
 }
 
-// Store and return the next rune in the parser. -1 is EOF.
-func (p *parser) nextc() int {
-  if p.pos == -1 {
-    p.pos = 0
-  } else if p.ch != -1 {
-    p.pos += utf8.RuneLen(p.ch)
-    if p.pos >= len(p.src) {
-      p.ch = -1
-      return -1
-    }
-  } else {
-    return -1
-  }
-
-  p.ch, _ = utf8.DecodeRuneInString(p.src[p.pos:])
-  return p.ch
-}
-
-// Jump to the given position within the parser's contained string. The rune
-// at this location will be set in p.ch and returned. -1 is EOF.
-func (p *parser) jump(pos int) int {
-  if pos < 0 {
-    panic("can't jump to negative position")
-  }
-
-  p.pos = pos
-  if p.pos < len(p.src) {
-    p.ch, _ = utf8.DecodeRuneInString(p.src[p.pos:])
-  } else {
-    p.ch = -1
-  }
-  return p.ch
-}
-
 // Determine whether the given flag is set.
 func (p *parser) flag(flag int) bool {
   if flag < 64 || flag > 127 {
     panic(fmt.Sprintf("can't check flag, out of range: %c", flag))
   }
   return (p.flags | (1<<byte(flag))) != 0
-}
-
-// Return the literal string from->to some expected characters. Assumes that the
-// cursor is resting on the 'from' character. This method will return with the
-// cursor resting on the 'to' character, or on the final EOF (if not found).
-func (p *parser) literal(start int, end int) string {
-  if p.ch != start {
-    panic(fmt.Sprintf("expected literal to start with: %c", start))
-  }
-
-  result := ""
-  for p.nextc() != end {
-    if p.ch == -1 {
-      panic(fmt.Sprintf("expected literal to end with: %c", end))
-    }
-    result += fmt.Sprintf("%c", p.ch)
-  }
-  return result
 }
 
 // Helper method to connect instr 'from' to instr 'out'.
@@ -269,11 +214,11 @@ func (p *parser) alt(alt_id string, capture bool) (start *instr, end *instr) {
   start = b_start
   p.out(b_end, end)
 
-  for p.ch == '|' {
+  for p.src.curr() == '|' {
     start = p.instr()
     p.out(start, b_start)
 
-    p.nextc()
+    p.src.nextCh()
     b_start, b_end = p.regexp()
     p.out(start, b_start)
     p.out(b_end, end)
@@ -281,7 +226,7 @@ func (p *parser) alt(alt_id string, capture bool) (start *instr, end *instr) {
   }
 
   // Note: We don't move over this final bracket.
-  if p.ch != ')' {
+  if p.src.curr() != ')' {
     panic("alt must end with ')'")
   }
 
@@ -295,7 +240,7 @@ func (p *parser) alt(alt_id string, capture bool) (start *instr, end *instr) {
 // runeclass interface. Will consume all characters that are part of definition.
 func (p *parser) class(within_class bool) (class *RuneClass) {
   class = NewRuneClass()
-  switch p.ch {
+  switch p.src.curr() {
   case '.':
     // TODO: this is a fairly heavyweight opt-in method
     if p.flag('s') {
@@ -303,17 +248,17 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
     } else {
       class.AddFunc(false, func(rune int) bool { return rune != '\n' })
     }
-    p.nextc()
+    p.src.nextCh()
   case '[':
-    if p.nextc() == ':' {
+    if p.src.nextCh() == ':' {
       // Match an ASCII class name.
-      ascii_class := p.literal(':', ':')
+      ascii_class := p.src.literal(":", ":")
       negate := false
       if ascii_class[0] == '^' {
         negate = true
         ascii_class = ascii_class[1:len(ascii_class)]
       }
-      if p.nextc() != ']' {
+      if p.src.curr() != ']' {
         panic("expected closing of ascii class with ':]', got ':'")
       }
 
@@ -326,28 +271,28 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
       }
 
       negate := false
-      if p.ch == '^' {
+      if p.src.curr() == '^' {
         negate = true
-        p.nextc()
+        p.src.nextCh()
       }
 
-      for p.ch != ']' {
+      for p.src.curr() != ']' {
         class.AddRuneClass(negate, p.class(true))
       }
     }
-    p.nextc() // Move over final ']'.
+    p.src.nextCh() // Move over final ']'.
   case '\\':
     // Match some escaped character or escaped combination.
-    switch p.nextc() {
+    switch p.src.nextCh() {
     case 'x':
       // Match hex character code.
       var hex string
-      if p.nextc() == '{' {
-        hex = p.literal('{', '}')
+      if p.src.nextCh() == '{' {
+        hex = p.src.literal("{", "}")
       } else {
-        hex = fmt.Sprintf("%c%c", p.ch, p.nextc())
+        hex = fmt.Sprintf("%c%c", p.src.curr(), p.src.nextCh())
+        p.src.nextCh() // Step over the end of the hex code.
       }
-      p.nextc() // Step over the end of the hex code.
 
       // Parse and return the corresponding rune.
       rune, err := strconv.Btoui64(hex, 16)
@@ -358,12 +303,13 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
       class.AddRune(false, int(rune))
     case 'p', 'P':
       // Match a Unicode class name.
-      negate := (p.ch == 'P')
-      unicode_class := fmt.Sprintf("%c", p.nextc())
+      negate := (p.src.curr() == 'P')
+      unicode_class := fmt.Sprintf("%c", p.src.nextCh())
       if unicode_class[0] == '{' {
-        unicode_class = p.literal('{', '}')
+        unicode_class = p.src.literal("{", "}")
+      } else {
+        p.src.nextCh() // Step over the end of the hex code.
       }
-      p.nextc() // Step over the end of the hex code.
 
       // Find and return the class.
       if ok := class.AddUnicodeClass(negate, unicode_class); !ok {
@@ -371,34 +317,34 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
       }
     case 'd', 'D':
       // Match digits.
-      p.nextc()
-      negate := (p.ch == 'D')
+      p.src.nextCh()
+      negate := (p.src.curr() == 'D')
       class.AddUnicodeClass(negate, "Nd")
     case 's', 'S':
       // Match whitespace.
-      p.nextc()
-      negate := (p.ch == 'S')
+      p.src.nextCh()
+      negate := (p.src.curr() == 'S')
       class.AddAsciiClass(negate, "whitespace")
     case 'w', 'W':
       // Match word characters.
-      p.nextc()
-      negate := (p.ch == 'W')
+      p.src.nextCh()
+      negate := (p.src.curr() == 'W')
       class.AddAsciiClass(negate, "word")
     default:
-      if escape := ESCAPES[p.ch]; escape != 0 {
+      if escape := ESCAPES[p.src.curr()]; escape != 0 {
         // Literally match '\n', '\r', etc.
         class.AddRune(false, escape)
-        p.nextc()
-      } else if unicode.Is(_punct, p.ch) {
+        p.src.nextCh()
+      } else if unicode.Is(_punct, p.src.curr()) {
         // Allow punctuation to be blindly escaped.
-        class.AddRune(false, p.ch)
-        p.nextc()
-      } else if unicode.IsDigit(p.ch) {
+        class.AddRune(false, p.src.curr())
+        p.src.nextCh()
+      } else if unicode.IsDigit(p.src.curr()) {
         // Match octal character code (begins with digit, up to three digits).
         oct := ""
         for i := 0; i < 3; i++ {
-          oct += fmt.Sprintf("%c", p.ch)
-          if !unicode.IsDigit(p.nextc()) {
+          oct += fmt.Sprintf("%c", p.src.curr())
+          if !unicode.IsDigit(p.src.nextCh()) {
             break
           }
         }
@@ -410,22 +356,22 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
         }
         class.AddRune(false, int(rune))
       } else {
-        panic(fmt.Sprintf("unsupported escape type: \\%c", p.ch))
+        panic(fmt.Sprintf("unsupported escape type: \\%c", p.src.curr()))
       }
     }
   default:
     // Match a single rune literal, or a range (when inside a character class).
     // TODO: Sanity-check and disallow some punctuation.
-    rune := p.ch
-    if p.nextc() == '-' {
+    rune := p.src.curr()
+    if p.src.nextCh() == '-' {
       if !within_class {
-        panic(fmt.Sprintf("can't match a range outside class: %c-%c", rune, p.nextc()))
+        panic(fmt.Sprintf("can't match a range outside class: %c-%c", rune, p.src.nextCh()))
       }
-      rune_high := p.nextc()
+      rune_high := p.src.nextCh()
       if rune_high < rune {
         panic(fmt.Sprintf("unexpected range: %c >= %c", rune, rune_high))
       }
-      p.nextc() // Step over the end of the range.
+      p.src.nextCh() // Step over the end of the range.
       class.AddRuneRange(false, rune, rune_high)
     } else {
       class.AddRune(false, rune)
@@ -447,62 +393,61 @@ func (p *parser) buildLeftRight(mode byte) *instr {
 // bracketed expression. When this function returns, the cursor will have moved
 // past the final rune in this term.
 func (p *parser) term() (start *instr, end *instr) {
-  switch p.ch {
+  switch p.src.curr() {
   case -1:
     panic("EOF in term")
   case '*', '+', '{', '?':
-    panic(fmt.Sprintf("unexpected expansion char: %c", p.ch))
+    panic(fmt.Sprintf("unexpected expansion char: %c at %d", p.src.curr(), p.src.opos))
   case ')', '}', ']':
     panic("unexpected close element")
   case '(':
     capture := true
     alt_id := ""
     old_flags := p.flags
-    if p.nextc() == '?' {
+    if p.src.nextCh() == '?' {
       // Do something interesting before descending into this alt.
-      p.nextc()
-      if p.ch == 'P' {
-        p.nextc() // move to '<'
-        alt_id = p.literal('<', '>')
-        p.nextc() // move past '>'
+      p.src.nextCh()
+      if p.src.curr() == 'P' {
+        p.src.nextCh() // move to '<'
+        alt_id = p.src.literal("<", ">")
       } else {
         // anything but 'P' means flags (and, non-captured).
         capture = false
         set := true
         outer: for {
-          switch p.ch {
+          switch p.src.curr() {
           case ':':
-            p.nextc() // move past ':'
+            p.src.nextCh() // move past ':'
             break outer // no more flags, process re
           case ')':
             // Return immediately: there's no instructions here, just flag sets!
-            p.nextc()
+            p.src.nextCh()
             start = p.instr()
             return start, start
           case '-':
             // now we're clearing flags
             set = false
           default:
-            if p.ch < 64 && p.ch > 127 {
-              panic(fmt.Sprintf("flag not in range: %c", p.ch))
+            if p.src.curr() < 64 && p.src.curr() > 127 {
+              panic(fmt.Sprintf("flag not in range: %c", p.src.curr()))
             }
-            flag := byte(p.ch - 64)
+            flag := byte(p.src.curr() - 64)
             if set {
               p.flags |= (1<<flag)
             } else {
               p.flags &= ^(1<<flag)
             }
           }
-          p.nextc()
+          p.src.nextCh()
         }
       }
     }
 
     start, end = p.alt(alt_id, capture)
-    if p.ch != ')' {
+    if p.src.curr() != ')' {
       panic("alt should finish on end bracket")
     }
-    p.nextc()
+    p.src.nextCh()
     p.flags = old_flags
     return start, end
   case '$':
@@ -510,7 +455,7 @@ func (p *parser) term() (start *instr, end *instr) {
     if p.flag('m') {
       mode = bEndLine
     }
-    p.nextc()
+    p.src.nextCh()
     start = p.buildLeftRight(mode)
     return start, start
   case '^':
@@ -518,25 +463,18 @@ func (p *parser) term() (start *instr, end *instr) {
     if p.flag('m') {
       mode = bBeginLine
     }
-    p.nextc()
+    p.src.nextCh()
     start = p.buildLeftRight(mode)
     return start, start
   }
 
   // Peek forward to match terms that do not always consume a single rune.
-  if p.ch == '\\' {
-    pos := p.pos
-    switch p.nextc() {
+  if p.src.curr() == '\\' {
+    reset := p.src
+    switch p.src.nextCh() {
     case 'Q':
       // Match a string literal up to '\E'.
-      p.nextc()
-      i := strings.Index(p.src[p.pos:len(p.src)], "\\E")
-      if i == -1 {
-        panic("couldn't find \\E after \\Q")
-      }
-      literal := p.src[p.pos:p.pos+i]
-      p.jump(p.pos + i + 2)
-
+      literal := p.src.literal("Q", "\\E")
       start = p.instr()
       end = start
       for _, ch := range literal {
@@ -550,25 +488,25 @@ func (p *parser) term() (start *instr, end *instr) {
       }
       return start, end
     case 'A':
-      p.nextc()
+      p.src.nextCh()
       start = p.buildLeftRight(bBeginText)
       return start, start
     case 'z':
-      p.nextc()
+      p.src.nextCh()
       start = p.buildLeftRight(bEndText)
       return start, start
     case 'b':
-      p.nextc()
+      p.src.nextCh()
       start = p.buildLeftRight(bWordBoundary)
       return start, start
     case 'B':
-      p.nextc()
+      p.src.nextCh()
       start = p.buildLeftRight(bNotWordBoundary)
       return start, start
     }
 
     // We didn't find anything interesting: push back to the previous position.
-    p.jump(pos)
+    p.src = reset
   }
 
   // Try to consume a rune class.
@@ -587,12 +525,12 @@ func (p *parser) term() (start *instr, end *instr) {
 // Safely retrieve a given term from the given position and alt count. If the
 // passed first is true, then set it to false and perform a no-op. Otherwise,
 // retrieve the new term.
-func (p *parser) safe_term(pos int, alt int, first *bool, start **instr, end **instr) {
+func (p *parser) safe_term(src SafeReader, alt int, first *bool, start **instr, end **instr) {
   if *first {
     *first = false
     return
   }
-  p.jump(pos)
+  p.src = src
   p.re.alts = alt
   *start, *end = p.term()
 }
@@ -602,7 +540,8 @@ func (p *parser) safe_term(pos int, alt int, first *bool, start **instr, end **i
 func (p *parser) closure() (start *instr, end *instr) {
 
   // Store state of pos/alts in case we have to reparse term.
-  base_pos, base_alt := p.pos, p.re.alts
+  revert_alts := p.re.alts
+  revert := p.src
 
   // Grab first term.
   start = p.instr()
@@ -621,15 +560,18 @@ func (p *parser) closure() (start *instr, end *instr) {
   if p.flag('U') {
     greedy = false
   }
-  switch p.ch {
+  switch p.src.curr() {
   case '?':
+    p.src.nextCh()
     req, opt = 0, 1
   case '*':
+    p.src.nextCh()
     req, opt = 0, -1
   case '+':
+    p.src.nextCh()
     req, opt = 1, -1
   case '{':
-    raw := p.literal('{', '}')
+    raw := p.src.literal("{", "}")
     parts := strings.Split(raw, ",", 2)
     // TODO: handle malformed int
     req, _ = strconv.Atoi(parts[0])
@@ -645,11 +587,11 @@ func (p *parser) closure() (start *instr, end *instr) {
     return t_start, t_end // nothing to see here
   }
 
-  if p.nextc() == '?' {
+  if p.src.curr() == '?' {
     greedy = !greedy
-    p.nextc()
+    p.src.nextCh()
   }
-  end_pos := p.pos
+  end_src := p.src
 
   if req < 0 || opt < -1 || req == 0 && opt == 0 {
     panic("invalid req/opt combination")
@@ -657,7 +599,7 @@ func (p *parser) closure() (start *instr, end *instr) {
 
   // Generate all required steps.
   for i := 0; i < req; i++ {
-    p.safe_term(base_pos, base_alt, &first, &t_start, &t_end)
+    p.safe_term(revert, revert_alts, &first, &t_start, &t_end)
 
     p.out(end, t_start)
     end = t_end
@@ -682,7 +624,7 @@ func (p *parser) closure() (start *instr, end *instr) {
     real_end := p.instr()
 
     for i := 0; i < opt; i++ {
-      p.safe_term(base_pos, base_alt, &first, &t_start, &t_end)
+      p.safe_term(revert, revert_alts, &first, &t_start, &t_end)
 
       helper := p.instr()
       p.out(end, helper)
@@ -701,7 +643,7 @@ func (p *parser) closure() (start *instr, end *instr) {
     end = real_end
   }
 
-  p.jump(end_pos)
+  p.src = end_src
   return start, end
 }
 
@@ -713,7 +655,7 @@ func (p *parser) regexp() (start *instr, end *instr) {
   curr := start
 
   for {
-    if p.ch == -1 || p.ch == '|' || p.ch == ')' {
+    if p.src.curr() == -1 || p.src.curr() == '|' || p.src.curr() == ')' {
       break
     }
     s, e := p.closure()
@@ -826,15 +768,15 @@ func Parse(src string) (re *sregexp, err *string) {
   }()
 
   re = &sregexp{make([]*instr, 0, 1), 0}
-  p := parser{re, ".*?(" + src + ").*?", -1, -1, 0}
+  p := parser{re, NewSafeReader(".*?(" + src + ").*?"), 0}
   begin := p.instr()
   match := p.instr()
   match.mode = kMatch
 
-  p.nextc()
+  p.src.nextCh()
   start, end := p.regexp()
 
-  if p.ch != -1 {
+  if p.src.curr() != -1 {
     panic("could not consume all of regexp!")
   }
 
@@ -850,7 +792,7 @@ func Parse(src string) (re *sregexp, err *string) {
 func MustParse(src string) *sregexp {
   re, err := Parse(src)
   if err != nil {
-    panic(err)
+    panic(*err)
   }
   return re
 }

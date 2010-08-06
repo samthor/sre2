@@ -6,18 +6,13 @@ package sre2
 func (r *sregexp) RunSimple(src string) bool {
   curr := NewStateSet(len(r.prog), len(r.prog))
   next := NewStateSet(len(r.prog), len(r.prog))
-  parser := NewStringParser(src)
+  parser := NewSafeReader(src)
 
   // always start with state zero
   addstate(curr, r.prog[0], parser)
 
-  for {
-    ch := parser.nextc()
-    if ch == -1 {
-      break
-    }
-
-    //fmt.Fprintf(os.Stderr, "%c\t%b\n", rune, curr.bits[0])
+  for parser.nextCh() != -1 {
+    ch := parser.curr()
     if curr.Length() == 0 {
       return false // no more possible states, short-circuit failure
     }
@@ -44,7 +39,7 @@ func (r *sregexp) RunSimple(src string) bool {
 
 // Helper method - just descends through split/alt states and places them all
 // in the given StateSet.
-func addstate(set *StateSet, st *instr, p *sparser) {
+func addstate(set *StateSet, st *instr, p SafeReader) {
   if st == nil || set.Put(st.idx) {
     return // invalid
   }
@@ -56,7 +51,7 @@ func addstate(set *StateSet, st *instr, p *sparser) {
     // ignore, just walk over
     addstate(set, st.out, p)
   case kLeftRight:
-    if st.matchLeftRight(p.curr, p.next) {
+    if st.matchLeftRight(p.curr(), p.peek()) {
       addstate(set, st.out, p)
     }
   }
