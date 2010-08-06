@@ -50,7 +50,7 @@ func addstate(set *StateSet, st *instr, p SafeReader) {
   case kAltBegin, kAltEnd:
     // ignore, just walk over
     addstate(set, st.out, p)
-  case kLeftRight:
+  case kBoundaryCase:
     if st.matchBoundaryMode(p.curr(), p.peek()) {
       addstate(set, st.out, p)
     }

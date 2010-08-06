@@ -25,14 +25,14 @@ func (r *sregexp) DebugOut() {
 // Instruction type definitions, for "instr.mode".
 type instrMode byte; const (
   kSplit instrMode = iota // proceed down out & out1
-  kAltBegin  // begin of alt section, i.e. '('
-  kAltEnd    // end of alt section, i.e. ')'
-  kLeftRight // match left/right runes here
-  kRuneClass // if match rune, proceed down out
-  kMatch     // success state!
+  kAltBegin               // begin of alt section, i.e. '('
+  kAltEnd                 // end of alt section, i.e. ')'
+  kBoundaryCase           // match left/right runes here
+  kRuneClass              // if match rune, proceed down out
+  kMatch                  // success state!
 )
 
-// Constants for kLeftRight, stored in 'instr.lr'.
+// Constants for kBoundaryCase, stored in 'instr.lr'.
 type boundaryMode byte; const (
   bNone boundaryMode = iota
   bBeginText       // beginning of text
@@ -45,14 +45,22 @@ type boundaryMode byte; const (
 
 // Represents a single instruction in any regexp.
 type instr struct {
-  idx int               // index of this instr
-  mode instrMode        // mode (as above)
-  lr boundaryMode       // left-right mode (as above)
-  rune *RuneClass       // rune class
-  out *instr            // next instr to process
-  out1 *instr           // alt next instr (for kSplit)
-  alt int               // identifier of alt branch (for kAlt{Begin,End})
-  alt_id *string        // string identifier of alt branch
+  idx int         // index of this instr
+  mode instrMode  // mode (as above)
+  out *instr      // next instr to process
+
+  // alternate path, for kSplit
+  out1 *instr
+
+  // boundary mode, for kBoundaryCase
+  lr boundaryMode
+
+  // rune class to match against, for kRuneClass
+  rune *RuneClass
+
+  // identifier of submatch for kAltBegin and kAltEnd
+  alt int         // numbered index
+  alt_id *string  // optional string identifier
 }
 
 // This provides a string-representation of any given instruction.
@@ -78,7 +86,7 @@ func (i *instr) String() string {
     if i.alt_id != nil {
       str += fmt.Sprintf(" alt_id=%s", *i.alt_id)
     }
-  case kLeftRight:
+  case kBoundaryCase:
     var mode string
     switch i.lr {
     case bBeginText: mode = "bBeginText"
@@ -88,7 +96,7 @@ func (i *instr) String() string {
     case bWordBoundary: mode = "bWordBoundary"
     case bNotWordBoundary: mode = "bNotWordBoundary"
     }
-    str += fmt.Sprintf(" kLeftRight [%s]", mode)
+    str += fmt.Sprintf(" kBoundaryCase [%s]", mode)
   case kRuneClass:
     str += fmt.Sprint(" kRuneClass ", i.rune)
   case kMatch:
@@ -102,10 +110,10 @@ func (s *instr) match(rune int) bool {
   return s.mode == kRuneClass && s.rune.MatchRune(rune)
 }
 
-// Matcher method for kLeftRight. If either left or right is not within the
+// Matcher method for kBoundaryCase. If either left or right is not within the
 // target string, then -1 should be provided.
 func (s *instr) matchBoundaryMode(left int, right int) bool {
-  if s.mode != kLeftRight {
+  if s.mode != kBoundaryCase {
     return false
   }
   switch s.lr {
@@ -156,7 +164,7 @@ func (p *parser) instr() *instr {
     copy(p.re.prog, local)
   }
   p.re.prog = p.re.prog[0:pos+1]
-  i := &instr{pos, kSplit, bNone, nil, nil, nil, -1, nil}
+  i := &instr{pos, kSplit, nil, nil, bNone, nil, -1, nil}
   p.re.prog[pos] = i
   return i
 }
@@ -384,7 +392,7 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
 // Build a left-right matcher of the given mode.
 func (p *parser) makeBoundaryInstr(mode boundaryMode) *instr {
   instr := p.instr()
-  instr.mode = kLeftRight
+  instr.mode = kBoundaryCase
   instr.lr = mode
   return instr
 }
