@@ -407,6 +407,7 @@ func (p *parser) term() (start *instr, end *instr) {
   case ')', '}', ']':
     panic("unexpected close element")
   case '(':
+    // Match a bracketed expression (or modify current flags, with '?').
     capture := true
     alt_id := ""
     old_flags := p.flags
@@ -449,6 +450,7 @@ func (p *parser) term() (start *instr, end *instr) {
       }
     }
 
+    // Now actually consume the bracketed expression.
     start, end = p.alt(alt_id, capture)
     if p.src.curr() != ')' {
       panic("alt should finish on end bracket")
@@ -457,30 +459,30 @@ func (p *parser) term() (start *instr, end *instr) {
     p.flags = old_flags
     return start, end
   case '$':
+    // Match the end of text, or (with 'm') the end of a line.
+    p.src.nextCh() // consume '$'
   	mode := bEndText
     if p.flag('m') {
       mode = bEndLine
     }
-    p.src.nextCh()
     start = p.makeBoundaryInstr(mode)
     return start, start
   case '^':
+    // Match the beginning of text, or (with 'm') the start of a line.
+    p.src.nextCh() // consume '^'
     mode := bBeginText
     if p.flag('m') {
       mode = bBeginLine
     }
-    p.src.nextCh()
     start = p.makeBoundaryInstr(mode)
     return start, start
-  }
-
-  // Peek forward to match terms that do not always consume a single rune.
-  if p.src.curr() == '\\' {
-    reset := p.src
-    switch p.src.nextCh() {
+  case '\\':
+    // Peek forward to match backslash-escaped terms which are not character classes.
+    // If any of these branches trigger, they will return past the consumed 'term'.
+    switch p.src.peek() {
     case 'Q':
-      // Match a string literal up to '\E'.
-      literal := p.src.literal("Q", "\\E")
+      // Match a complete string literal, contained between '\Q' and the nearest '\E'.
+      literal := p.src.literal("\\Q", "\\E")
       start = p.instr()
       end = start
       for _, ch := range literal {
@@ -488,31 +490,31 @@ func (p *parser) term() (start *instr, end *instr) {
         instr.mode = kRuneClass
         instr.rune = NewRuneClass()
         instr.rune.AddRune(false, ch)
-
         p.out(end, instr)
         end = instr
       }
       return start, end
     case 'A':
-      p.src.nextCh()
+      // Match only the beginning of text.
+      p.src.consume("\\A")
       start = p.makeBoundaryInstr(bBeginText)
       return start, start
     case 'z':
-      p.src.nextCh()
+      // Match only the end of text.
+      p.src.consume("\\z")
       start = p.makeBoundaryInstr(bEndText)
       return start, start
     case 'b':
-      p.src.nextCh()
+      // Match an ASCII word boundary.
+      p.src.consume("\\b")
       start = p.makeBoundaryInstr(bWordBoundary)
       return start, start
     case 'B':
-      p.src.nextCh()
+      // Match a non-ASCII word boundary.
+      p.src.consume("\\B")
       start = p.makeBoundaryInstr(bNotWordBoundary)
       return start, start
     }
-
-    // We didn't find anything interesting: push back to the previous position.
-    p.src = reset
   }
 
   // Try to consume a rune class.

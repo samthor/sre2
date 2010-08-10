@@ -61,20 +61,25 @@ func (r *SafeReader) jump(to int) {
   r.nextCh()
 }
 
+// Consume a known literal at the given point. If the literal does not exist,
+// starting with the current focus rune, then panic.
+func (r *SafeReader) consume(str string) {
+  if r.opos == -1 {
+    panic("can't consume before reading")
+  }
+  if !strings.HasPrefix(r.str[r.opos:], str) {
+    panic("could not find correct str: " + str + " in available: " + r.str[r.opos:])
+  }
+  r.jump(r.opos + len(str))
+}
+
 // Consume a literal that *must* exist, between the given prefix and suffix.
 // Searches for the prefix starting with the current focus rune, and returns
 // this SafeReader focused on the rune directly after the suffix.
 // e.g. "abcde\Qhello\Eblah", with literal("\\Q", "\\E"), returns "hello" 
 //    focus --^                         and will focus on "b" after "\E".
 func (r *SafeReader) literal(prefix string, suffix string) string {
-  if r.opos == -1 {
-    panic("can't search for literal when not inside string")
-  }
-
-  if !strings.HasPrefix(r.str[r.opos:], prefix) {
-    panic("could not find correct prefix: " + prefix + " in str: " + r.str)
-  }
-  r.jump(r.opos + len(prefix))
+  r.consume(prefix)
   start := r.opos
 
   idx := strings.Index(r.str[r.opos:], suffix)
