@@ -45,9 +45,9 @@ type boundaryMode byte; const (
 
 // Represents a single instruction in any regexp.
 type instr struct {
-  idx int         // index of this instr
-  mode instrMode  // mode (as above)
-  out *instr      // next instr to process
+  idx int        // index of this instr
+  mode instrMode // mode (as above)
+  out *instr     // next instr to process
 
   // alternate path, for kSplit
   out1 *instr
@@ -59,8 +59,8 @@ type instr struct {
   rune *RuneClass
 
   // identifier of submatch for kAltBegin and kAltEnd
-  alt int         // numbered index
-  alt_id *string  // optional string identifier
+  alt int        // numbered index
+  alt_id string  // string identifier (blank=none)
 }
 
 // This provides a string-representation of any given instruction.
@@ -83,8 +83,8 @@ func (i *instr) String() string {
       str += " kAltEnd"
     }
     str += fmt.Sprintf(" alt=%d", i.alt)
-    if i.alt_id != nil {
-      str += fmt.Sprintf(" alt_id=%s", *i.alt_id)
+    if len(i.alt_id) != 0 {
+      str += fmt.Sprintf(" alt_id=%s", i.alt_id)
     }
   case kBoundaryCase:
     var mode string
@@ -164,7 +164,7 @@ func (p *parser) instr() *instr {
     copy(p.re.prog, local)
   }
   p.re.prog = p.re.prog[0:pos+1]
-  i := &instr{pos, kSplit, nil, nil, bNone, nil, -1, nil}
+  i := &instr{pos, kSplit, nil, nil, bNone, nil, -1, ""}
   p.re.prog[pos] = i
   return i
 }
@@ -209,10 +209,8 @@ func (p *parser) alt(alt_id string, capture bool) (start *instr, end *instr) {
     end.mode = kAltEnd
     end.alt = p.re.alts
 
-    if alt_id != "" {
-      alt_begin.alt_id = &alt_id
-      end.alt_id = &alt_id
-    }
+    alt_begin.alt_id = alt_id
+    end.alt_id = alt_id
 
     // Increment alt counter.
     p.re.alts += 1
