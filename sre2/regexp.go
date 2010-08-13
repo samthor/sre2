@@ -248,24 +248,16 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
   class = NewRuneClass()
   switch p.src.curr() {
   case '.':
-    // TODO: this is a fairly heavyweight opt-in method
-    if p.flag('s') {
-      class.AddFunc(false, func(rune int) bool { return true })
-    } else {
-      class.AddFunc(false, func(rune int) bool { return rune != '\n' })
-    }
+    class.AddAll(p.flag('s'))
     p.src.nextCh()
   case '[':
-    if p.src.nextCh() == ':' {
+    if p.src.peek() == ':' {
       // Match an ASCII class name.
-      ascii_class := p.src.literal(":", ":")
+      ascii_class := p.src.literal("[:", ":]")
       negate := false
       if ascii_class[0] == '^' {
         negate = true
         ascii_class = ascii_class[1:len(ascii_class)]
-      }
-      if p.src.curr() != ']' {
-        panic("expected closing of ascii class with ':]', got ':'")
       }
 
       if ok := class.AddAsciiClass(negate, ascii_class); !ok {
@@ -277,7 +269,7 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
       }
 
       negate := false
-      if p.src.curr() == '^' {
+      if p.src.nextCh() == '^' {
         negate = true
         p.src.nextCh()
       }
@@ -285,8 +277,8 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
       for p.src.curr() != ']' {
         class.AddRuneClass(negate, p.class(true))
       }
+      p.src.nextCh() // Move over final ']'.
     }
-    p.src.nextCh() // Move over final ']'.
   case '\\':
     // Match some escaped character or escaped combination.
     switch p.src.nextCh() {
@@ -306,7 +298,7 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
         panic(fmt.Sprintf("couldn't parse hex: %s", hex))
       }
 
-      class.AddRune(false, int(rune))
+      class.AddRune(int(rune))
     case 'p', 'P':
       // Match a Unicode class name.
       negate := (p.src.curr() == 'P')
@@ -323,27 +315,27 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
       }
     case 'd', 'D':
       // Match digits.
-      p.src.nextCh()
       negate := (p.src.curr() == 'D')
+      p.src.nextCh()
       class.AddUnicodeClass(negate, "Nd")
     case 's', 'S':
       // Match whitespace.
-      p.src.nextCh()
       negate := (p.src.curr() == 'S')
+      p.src.nextCh()
       class.AddAsciiClass(negate, "whitespace")
     case 'w', 'W':
       // Match word characters.
-      p.src.nextCh()
       negate := (p.src.curr() == 'W')
+      p.src.nextCh()
       class.AddAsciiClass(negate, "word")
     default:
       if escape := ESCAPES[p.src.curr()]; escape != 0 {
         // Literally match '\n', '\r', etc.
-        class.AddRune(false, escape)
+        class.AddRune(escape)
         p.src.nextCh()
       } else if unicode.Is(_punct, p.src.curr()) {
         // Allow punctuation to be blindly escaped.
-        class.AddRune(false, p.src.curr())
+        class.AddRune(p.src.curr())
         p.src.nextCh()
       } else if unicode.IsDigit(p.src.curr()) {
         // Match octal character code (begins with digit, up to three digits).
@@ -360,7 +352,7 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
         if err != nil {
           panic(fmt.Sprintf("couldn't parse oct: %s", oct))
         }
-        class.AddRune(false, int(rune))
+        class.AddRune(int(rune))
       } else {
         panic(fmt.Sprintf("unsupported escape type: \\%c", p.src.curr()))
       }
@@ -378,9 +370,9 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
         panic(fmt.Sprintf("unexpected range: %c >= %c", rune, rune_high))
       }
       p.src.nextCh() // Step over the end of the range.
-      class.AddRuneRange(false, rune, rune_high)
+      class.AddRuneRange(rune, rune_high)
     } else {
-      class.AddRune(false, rune)
+      class.AddRune(rune)
     }
   }
 
@@ -489,7 +481,7 @@ func (p *parser) term() (start *instr, end *instr) {
         instr := p.instr()
         instr.mode = kRuneClass
         instr.rune = NewRuneClass()
-        instr.rune.AddRune(false, ch)
+        instr.rune.AddRune(ch)
         p.out(end, instr)
         end = instr
       }

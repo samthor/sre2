@@ -26,22 +26,23 @@ func (c *RuneClass) _Push(negate bool, v interface{}) {
   }
 }
 
-func (c *RuneClass) AddRune(negate bool, rune int) {
-  c._Push(negate, rune)
+func (c *RuneClass) AddRune(rune int) {
+  c._Push(false, rune)
 }
 
-func (c *RuneClass) AddFunc(negate bool, fn func(rune int) bool) {
-  c._Push(negate, fn)
+func (c *RuneClass) AddAll(include_newline bool) {
+  c._Push(false, include_newline)
 }
 
-func (c *RuneClass) AddRuneRange(negate bool, low int, high int) {
-  c._Push(negate, unicode.Range{low, high, 1})
+func (c *RuneClass) AddRuneRange(low int, high int) {
+  c._Push(false, unicode.Range{low, high, 1})
 }
 
 func (c *RuneClass) AddUnicodeClass(negate bool, class string) bool {
   found := false
 
   if len(class) == 1 {
+    // A single character is a shorthand request for any category starting with this.
     for key, r := range unicode.Categories {
       if key[0] == class[0] {
         found = true
@@ -49,17 +50,14 @@ func (c *RuneClass) AddUnicodeClass(negate bool, class string) bool {
       }
     }
   } else {
-    if r, ok := unicode.Categories[class]; ok {
-      c._Push(negate, r)
-      found = true
-    }
-    if r, ok := unicode.Properties[class]; ok {
-      c._Push(negate, r)
-      found = true
-    }
-    if r, ok := unicode.Scripts[class]; ok {
-      c._Push(negate, r)
-      found = true
+    // Search for the unicode class name inside cats/props/scripts.
+    options := []map[string][]unicode.Range{
+        unicode.Categories, unicode.Properties, unicode.Scripts}
+    for _, option := range options {
+      if r, ok := option[class]; ok {
+        c._Push(negate, r)
+        found = true
+      }
     }
   }
 
@@ -118,10 +116,10 @@ func (c *RuneClass) MatchRune(rune int) bool {
 
 func match(rune int, v interface{}) bool {
   switch x := v.(type) {
+  case bool:
+    return x || rune != '\n'
   case int:
     return x == rune
-  case func(rune int) bool:
-    return x(rune)
   case unicode.Range:
     return rune >= x.Lo && rune <= x.Hi && ((rune - x.Lo) % x.Stride == 0)
   case []unicode.Range:
