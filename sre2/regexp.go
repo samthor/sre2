@@ -243,6 +243,61 @@ func (p *parser) alt(alt_id string, capture bool) (start *instr, end *instr) {
   return alt_begin, end
 }
 
+func (p *parser) single_rune() int {
+  if rune := p.src.curr(); rune != '\\' {
+    p.src.nextCh()
+    return rune
+  }
+
+  if p.src.peek() == 'x' {
+    // Match hex character code.
+    var hex string
+    p.src.nextCh()
+    if p.src.nextCh() == '{' {
+      hex = p.src.literal("{", "}")
+    } else {
+      hex = fmt.Sprintf("%c%c", p.src.curr(), p.src.nextCh())
+      p.src.nextCh() // Step over the end of the hex code.
+    }
+
+    // Parse and return the corresponding rune.
+    rune, err := strconv.Btoui64(hex, 16)
+    if err != nil {
+      panic(fmt.Sprintf("couldn't parse hex: %s", hex))
+    }
+    return int(rune)
+  } else if rune := ESCAPES[p.src.peek()]; rune != 0 {
+    // Literally match '\n', '\r', etc.
+    p.src.nextCh(); p.src.nextCh()
+    return rune
+  } else if unicode.Is(_punct, p.src.peek()) {
+    // Allow punctuation to be blindly escaped.
+    rune := p.src.nextCh()
+    p.src.nextCh()
+    return rune
+  } else if unicode.IsDigit(p.src.peek()) {
+    // Match octal character code (begins with digit, up to three digits).
+    oct := ""
+    p.src.nextCh()
+    for i := 0; i < 3; i++ {
+      oct += fmt.Sprintf("%c", p.src.curr())
+      if !unicode.IsDigit(p.src.nextCh()) {
+        break
+      }
+    }
+
+    // Parse and return the corresponding rune.
+    rune, err := strconv.Btoui64(oct, 8)
+    if err != nil {
+      panic(fmt.Sprintf("couldn't parse oct: %s", oct))
+    }
+    return int(rune)
+  }
+
+  // This is an escape sequence which does not identify a single rune.
+  panic(fmt.Sprintf("not a valid escape sequence: \\%c", p.src.peek()))
+}
+
 // Consume a single character class and provide an implementation of the
 // runeclass interface. Will consume all characters that are part of definition.
 func (p *parser) class(within_class bool) (filter RuneFilter) {
@@ -290,26 +345,10 @@ func (p *parser) class(within_class bool) (filter RuneFilter) {
     }
   case '\\':
     // Match some escaped character or escaped combination.
-    switch p.src.nextCh() {
-    case 'x':
-      // Match hex character code.
-      var hex string
-      if p.src.nextCh() == '{' {
-        hex = p.src.literal("{", "}")
-      } else {
-        hex = fmt.Sprintf("%c%c", p.src.curr(), p.src.nextCh())
-        p.src.nextCh() // Step over the end of the hex code.
-      }
-
-      // Parse and return the corresponding rune.
-      rune, err := strconv.Btoui64(hex, 16)
-      if err != nil {
-        panic(fmt.Sprintf("couldn't parse hex: %s", hex))
-      }
-      filter = MatchRune(int(rune))
+    switch p.src.peek() {
     case 'p', 'P':
       // Match a Unicode class name.
-      negate = (p.src.curr() == 'P')
+      negate = (p.src.nextCh() == 'P')
       unicode_class := fmt.Sprintf("%c", p.src.nextCh())
       if unicode_class[0] == '{' {
         unicode_class = p.src.literal("{", "}")
@@ -323,62 +362,34 @@ func (p *parser) class(within_class bool) (filter RuneFilter) {
       }
     case 'd', 'D':
       // Match digits.
-      negate = (p.src.curr() == 'D')
+      negate = (p.src.nextCh() == 'D')
       p.src.nextCh()
       filter = MatchUnicodeClass("Nd")
     case 's', 'S':
       // Match whitespace.
-      negate = (p.src.curr() == 'S')
+      negate = (p.src.nextCh() == 'S')
       p.src.nextCh()
       filter = MatchAsciiClass("whitespace")
     case 'w', 'W':
       // Match word characters.
-      negate = (p.src.curr() == 'W')
+      negate = (p.src.nextCh() == 'W')
       p.src.nextCh()
       filter = MatchAsciiClass("word")
-    default:
-      if escape := ESCAPES[p.src.curr()]; escape != 0 {
-        // Literally match '\n', '\r', etc.
-        p.src.nextCh()
-        filter = MatchRune(escape)
-      } else if unicode.Is(_punct, p.src.curr()) {
-        // Allow punctuation to be blindly escaped.
-        rune := p.src.curr()
-        p.src.nextCh()
-        filter = MatchRune(rune)
-      } else if unicode.IsDigit(p.src.curr()) {
-        // Match octal character code (begins with digit, up to three digits).
-        oct := ""
-        for i := 0; i < 3; i++ {
-          oct += fmt.Sprintf("%c", p.src.curr())
-          if !unicode.IsDigit(p.src.nextCh()) {
-            break
-          }
-        }
-
-        // Parse and return the corresponding rune.
-        rune, err := strconv.Btoui64(oct, 8)
-        if err != nil {
-          panic(fmt.Sprintf("couldn't parse oct: %s", oct))
-        }
-        filter = MatchRune(int(rune))
-      } else {
-        panic(fmt.Sprintf("unsupported escape type: \\%c", p.src.curr()))
-      }
     }
-  default:
+  }
+
+  if filter == nil {
     // Match a single rune literal, or a range (when inside a character class).
-    // TODO: Sanity-check and disallow some punctuation.
-    rune := p.src.curr()
-    if p.src.nextCh() == '-' {
+    rune := p.single_rune()
+    if p.src.curr() == '-' {
       if !within_class {
         panic(fmt.Sprintf("can't match a range outside class: %c-%c", rune, p.src.nextCh()))
       }
-      rune_high := p.src.nextCh()
+      p.src.nextCh() // move over '-'
+      rune_high := p.single_rune()
       if rune_high < rune {
         panic(fmt.Sprintf("unexpected range: %c >= %c", rune, rune_high))
       }
-      p.src.nextCh() // Step over the end of the range.
       filter = MatchRuneRange(rune, rune_high)
     } else {
       filter = MatchRune(rune)
