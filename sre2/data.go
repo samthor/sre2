@@ -8,18 +8,24 @@ import (
 
 type RuneFilter func(rune int) bool
 
+// Generate a RuneFilter matching a single rune.
 func MatchRune(to_match int) RuneFilter {
-  return RuneFilter(func(rune int) bool {
+  return func(rune int) bool {
     return rune == to_match
-  })
+  }
 }
 
+// Generate a RuneFilter matching a range of runes, assumes from <= to.
 func MatchRuneRange(from int, to int) RuneFilter {
-  return RuneFilter(func(rune int) bool {
+  return func(rune int) bool {
     return rune >= from && rune <= to
-  })
+  }
 }
 
+// Generate a RuneFilter matching a valid Unicode class. If no matching classes
+// are found, then this method will return nil.
+// Note that if just a single character is given, Categories will be searched
+// for this as a prefix (so that 'N' will match 'Nd', 'Nl', 'No' etc).
 func MatchUnicodeClass(class string) RuneFilter {
   found := false
   var match vector.Vector
@@ -44,7 +50,7 @@ func MatchUnicodeClass(class string) RuneFilter {
   }
 
   if found {
-    return RuneFilter(func(rune int) bool {
+    return func(rune int) bool {
       for _, raw := range match {
         r, _ := raw.([]unicode.Range)
         if unicode.Is(r, rune) {
@@ -52,23 +58,26 @@ func MatchUnicodeClass(class string) RuneFilter {
         }
       }
       return false
-    })
+    }
   }
   return nil
 }
 
+// Generate a RuneFilter matching a valid ASCII class. If no matching class
+// is found, then this method will return nil.
 func MatchAsciiClass(class string) RuneFilter {
   r, found := ASCII[class]
   if found {
-    return RuneFilter(func(rune int) bool {
+    return func(rune int) bool {
       return unicode.Is(r, rune)
-    })
+    }
   }
   return nil
 }
 
+// Generate a RuneFilter that OR's together the given RuneFilter instances.
 func MergeFilter(filters vector.Vector) RuneFilter {
-  return RuneFilter(func(rune int) bool {
+  return func(rune int) bool {
     if len(filters) > 0 {
       for _, raw := range filters {
         filter, _ := raw.(RuneFilter)
@@ -81,17 +90,19 @@ func MergeFilter(filters vector.Vector) RuneFilter {
 
     // If we haven't merged any filters, don't match (i.e. [] = nothing)
     return false
-  })
+  }
 }
 
+// Generate and return a new, inverse RuneFilter from the argument.
 func (r RuneFilter) Not() RuneFilter {
-  return RuneFilter(func(rune int) bool {
+  return func(rune int) bool {
     return !r(rune)
-  })
+  }
 }
 
+// Generate and return a new RuneFilter, which ignores case, from the argument.
 func (r RuneFilter) IgnoreCase() RuneFilter {
-  return RuneFilter(func(rune int) bool {
+  return func(rune int) bool {
     return r(unicode.ToLower(rune)) || r(unicode.ToUpper(rune))
-  })
+  }
 }
