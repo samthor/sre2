@@ -243,6 +243,9 @@ func (p *parser) alt(alt_id string, capture bool) (start *instr, end *instr) {
   return alt_begin, end
 }
 
+// Consume a single rune; assumes this is being invoked as the last possible
+// option and will panic if an invalid escape sequence is found. Will return the
+// found rune (as an integer) and with cursor past the entire representation.
 func (p *parser) single_rune() int {
   if rune := p.src.curr(); rune != '\\' {
     p.src.nextCh()
