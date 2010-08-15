@@ -2,6 +2,7 @@
 package sre2
 
 import (
+  "container/vector"
   "fmt"
   "os"
   "strconv"
@@ -56,7 +57,7 @@ type instr struct {
   lr boundaryMode
 
   // rune class to match against, for kRuneClass
-  rune *RuneClass
+  rune RuneFilter
 
   // identifier of submatch for kAltBegin and kAltEnd
   alt int        // numbered index
@@ -107,7 +108,7 @@ func (i *instr) String() string {
 
 // Matcher method for consuming runes, thus only matches kRuneClass.
 func (s *instr) match(rune int) bool {
-  return s.mode == kRuneClass && s.rune.MatchRune(rune)
+  return s.mode == kRuneClass && s.rune(rune)
 }
 
 // Matcher method for kBoundaryCase. If either left or right is not within the
@@ -244,23 +245,30 @@ func (p *parser) alt(alt_id string, capture bool) (start *instr, end *instr) {
 
 // Consume a single character class and provide an implementation of the
 // runeclass interface. Will consume all characters that are part of definition.
-func (p *parser) class(within_class bool) (class *RuneClass) {
-  class = NewRuneClass()
+func (p *parser) class(within_class bool) (filter RuneFilter) {
+  negate := false
   switch p.src.curr() {
   case '.':
-    class.AddAll(p.flag('s'))
+    if p.flag('s') {
+      filter = func(rune int) bool {
+        return true
+      }
+    } else {
+      filter = func(rune int) bool {
+        return rune != '\n'
+      }
+    }
     p.src.nextCh()
   case '[':
     if p.src.peek() == ':' {
       // Match an ASCII class name.
       ascii_class := p.src.literal("[:", ":]")
-      negate := false
       if ascii_class[0] == '^' {
         negate = true
         ascii_class = ascii_class[1:len(ascii_class)]
       }
 
-      if ok := class.AddAsciiClass(negate, ascii_class); !ok {
+      if filter = MatchAsciiClass(ascii_class); filter == nil {
         panic(fmt.Sprintf("could not identify ascii class: %s", ascii_class))
       }
     } else {
@@ -268,16 +276,17 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
         panic("can't match a [...] class within another class")
       }
 
-      negate := false
       if p.src.nextCh() == '^' {
         negate = true
         p.src.nextCh()
       }
 
+      var filters vector.Vector
       for p.src.curr() != ']' {
-        class.AddRuneClass(negate, p.class(true))
+        filters.Push(p.class(true))
       }
       p.src.nextCh() // Move over final ']'.
+      filter = MergeFilter(filters)
     }
   case '\\':
     // Match some escaped character or escaped combination.
@@ -297,11 +306,10 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
       if err != nil {
         panic(fmt.Sprintf("couldn't parse hex: %s", hex))
       }
-
-      class.AddRune(int(rune))
+      filter = MatchRune(int(rune))
     case 'p', 'P':
       // Match a Unicode class name.
-      negate := (p.src.curr() == 'P')
+      negate = (p.src.curr() == 'P')
       unicode_class := fmt.Sprintf("%c", p.src.nextCh())
       if unicode_class[0] == '{' {
         unicode_class = p.src.literal("{", "}")
@@ -310,33 +318,34 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
       }
 
       // Find and return the class.
-      if ok := class.AddUnicodeClass(negate, unicode_class); !ok {
+      if filter = MatchUnicodeClass(unicode_class); filter == nil {
         panic(fmt.Sprintf("could not identify unicode class: %s", unicode_class))
       }
     case 'd', 'D':
       // Match digits.
-      negate := (p.src.curr() == 'D')
+      negate = (p.src.curr() == 'D')
       p.src.nextCh()
-      class.AddUnicodeClass(negate, "Nd")
+      filter = MatchUnicodeClass("Nd")
     case 's', 'S':
       // Match whitespace.
-      negate := (p.src.curr() == 'S')
+      negate = (p.src.curr() == 'S')
       p.src.nextCh()
-      class.AddAsciiClass(negate, "whitespace")
+      filter = MatchAsciiClass("whitespace")
     case 'w', 'W':
       // Match word characters.
-      negate := (p.src.curr() == 'W')
+      negate = (p.src.curr() == 'W')
       p.src.nextCh()
-      class.AddAsciiClass(negate, "word")
+      filter = MatchAsciiClass("word")
     default:
       if escape := ESCAPES[p.src.curr()]; escape != 0 {
         // Literally match '\n', '\r', etc.
-        class.AddRune(escape)
         p.src.nextCh()
+        filter = MatchRune(escape)
       } else if unicode.Is(_punct, p.src.curr()) {
         // Allow punctuation to be blindly escaped.
-        class.AddRune(p.src.curr())
+        rune := p.src.curr()
         p.src.nextCh()
+        filter = MatchRune(rune)
       } else if unicode.IsDigit(p.src.curr()) {
         // Match octal character code (begins with digit, up to three digits).
         oct := ""
@@ -352,7 +361,7 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
         if err != nil {
           panic(fmt.Sprintf("couldn't parse oct: %s", oct))
         }
-        class.AddRune(int(rune))
+        filter = MatchRune(int(rune))
       } else {
         panic(fmt.Sprintf("unsupported escape type: \\%c", p.src.curr()))
       }
@@ -370,13 +379,16 @@ func (p *parser) class(within_class bool) (class *RuneClass) {
         panic(fmt.Sprintf("unexpected range: %c >= %c", rune, rune_high))
       }
       p.src.nextCh() // Step over the end of the range.
-      class.AddRuneRange(rune, rune_high)
+      filter = MatchRuneRange(rune, rune_high)
     } else {
-      class.AddRune(rune)
+      filter = MatchRune(rune)
     }
   }
 
-  return class
+  if negate {
+    return filter.Not()
+  }
+  return filter
 }
 
 // Build a left-right matcher of the given mode.
@@ -480,8 +492,7 @@ func (p *parser) term() (start *instr, end *instr) {
       for _, ch := range literal {
         instr := p.instr()
         instr.mode = kRuneClass
-        instr.rune = NewRuneClass()
-        instr.rune.AddRune(ch)
+        instr.rune = MatchRune(ch)
         p.out(end, instr)
         end = instr
       }
@@ -516,7 +527,7 @@ func (p *parser) term() (start *instr, end *instr) {
 
   if p.flag('i') {
     // Mark this class as case-insensitive.
-    start.rune.ignore_case = true
+    start.rune = start.rune.IgnoreCase()
   }
 
   return start, start
