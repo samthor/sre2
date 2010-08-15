@@ -90,13 +90,6 @@ func (r RuneFilter) Not() RuneFilter {
   })
 }
 
-func (r RuneFilter) OptNegate(negate bool) RuneFilter {
-  if negate {
-    return r.Not()
-  }
-  return r
-}
-
 func (r RuneFilter) IgnoreCase() RuneFilter {
   return RuneFilter(func(rune int) bool {
     return r(unicode.ToLower(rune)) || r(unicode.ToUpper(rune))
