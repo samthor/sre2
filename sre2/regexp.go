@@ -502,7 +502,7 @@ func (p *parser) term() (start *instr, end *instr) {
     case 'Q':
       // Match a complete string literal, contained between '\Q' and the nearest '\E'.
       // Note that we don't use p.single_rune() to retrieve runes here, because this
-      // works on literals exclusively.
+      // works on literals exclusively and does not interpret e.g. \x00 or \] (punct).
       literal := p.src.literal("\\Q", "\\E")
       start = p.instr()
       end = start
