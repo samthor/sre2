@@ -248,6 +248,7 @@ func (p *parser) alt(alt_id string, capture bool) (start *instr, end *instr) {
 // found rune (as an integer) and with cursor past the entire representation.
 func (p *parser) single_rune() int {
   if rune := p.src.curr(); rune != '\\' {
+    // This is just a regular character; return it immediately.
     p.src.nextCh()
     return rune
   }
@@ -500,6 +501,8 @@ func (p *parser) term() (start *instr, end *instr) {
     switch p.src.peek() {
     case 'Q':
       // Match a complete string literal, contained between '\Q' and the nearest '\E'.
+      // Note that we don't use p.single_rune() to retrieve runes here, because this
+      // works on literals exclusively.
       literal := p.src.literal("\\Q", "\\E")
       start = p.instr()
       end = start
