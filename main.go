@@ -26,7 +26,7 @@ func main() {
   }
 
   if !*mode {
-    // use new regexp impl
+    // use sre2
     r := sre2.MustParse(*re)
     r.DebugOut()
 
@@ -42,17 +42,20 @@ func main() {
 
     fmt.Fprintln(os.Stdout, "new result", result, "alt", alt)
   } else {
-    if !*sub {
-      panic("unsupported")
-    }
-
-    // use old regexp impl
+    // use existing packaged regexp module
     r := regexp.MustCompile(*re)
-    var result []int
+    result := false
+    var alt []int
     for i := 0; i < *runs; i++ {
-      result = r.ExecuteString(*s)
+      if *sub {
+        alt = r.FindStringIndex(*s)
+        result = (alt != nil)
+      } else {
+        // NB. This has the same efficiency as FindStringIndex() above, but more closely
+        // parallels what we do for SRE2.
+        result = r.MatchString(*s)
+      }
     }
-    success := (len(result) != 0)
-    fmt.Fprintln(os.Stdout, "std result", success, "alt", result)
+    fmt.Fprintln(os.Stdout, "std result", result, "alt", alt)
   }
 }
