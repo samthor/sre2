@@ -1,5 +1,5 @@
 
-package sre2 
+package sre2
 
 // Simple regexp matcher entry point. Just returns true/false for matching re,
 // and completely ignores submatches.
@@ -9,7 +9,7 @@ func (r *sregexp) RunSimple(src string) bool {
   parser := NewSafeReader(src)
 
   // always start with state zero
-  addstate(curr, r.prog[0], parser)
+  addstate(curr, r.prog[0], &parser)
 
   for parser.nextCh() != -1 {
     ch := parser.curr()
@@ -21,7 +21,7 @@ func (r *sregexp) RunSimple(src string) bool {
     for _, st := range curr.Get() {
       i := r.prog[st]
       if i.match(ch) {
-        addstate(next, i.out, parser)
+        addstate(next, i.out, &parser)
       }
     }
     curr, next = next, curr
@@ -39,7 +39,7 @@ func (r *sregexp) RunSimple(src string) bool {
 
 // Helper method - just descends through split/alt states and places them all
 // in the given StateSet.
-func addstate(set *StateSet, st *instr, p SafeReader) {
+func addstate(set *StateSet, st *instr, p *SafeReader) {
   if st == nil || set.Put(st.idx) {
     return // invalid
   }
