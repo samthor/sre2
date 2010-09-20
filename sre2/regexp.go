@@ -23,6 +23,12 @@ func (r *sregexp) DebugOut() {
   }
 }
 
+// Provide the number of marked alts [()'s] in this regexp.
+func (r *sregexp) NumAlts() int {
+  // we always have an outer () to match the whole re, subtract it
+  return r.alts - 1
+}
+
 // Instruction type definitions, for "instr.mode".
 type instrMode byte; const (
   kSplit instrMode = iota // proceed down out & out1

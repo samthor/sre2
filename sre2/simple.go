@@ -3,7 +3,7 @@ package sre2
 
 // Simple regexp matcher entry point. Just returns true/false for matching re,
 // and completely ignores submatches.
-func (r *sregexp) RunSimple(src string) bool {
+func (r *sregexp) Match(src string) bool {
   curr := NewStateSet(len(r.prog), len(r.prog))
   next := NewStateSet(len(r.prog), len(r.prog))
   parser := NewSafeReader(src)

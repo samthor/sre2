@@ -16,7 +16,9 @@ func checkState(t *testing.T, state bool, err string) {
 // Check the equality of two []int slices.
 func checkIntSlice(t *testing.T, expected []int, result []int, err string) {
   match := true
-  if len(expected) != len(result) {
+  if (expected == nil || result == nil) && (expected != nil && result != nil) {
+    match = false
+  } else if len(expected) != len(result) {
     match = false
   } else {
     for i := 0; i < len(expected); i++ {
@@ -31,24 +33,27 @@ func checkIntSlice(t *testing.T, expected []int, result []int, err string) {
 // Run a selection of basic regular expressions against this package.
 func TestSimpleRe(t *testing.T) {
   r := MustParse("")
-  checkState(t, r.RunSimple(""), "everything should match")
-  checkState(t, r.RunSimple("fadsnjkflsdafnas"), "everything should match")
+  checkState(t, r.NumAlts() == 0, "blank re should have no alts")
+  checkState(t, r.Match(""), "everything should match")
+  checkState(t, r.Match("fadsnjkflsdafnas"), "everything should match")
 
   r = MustParse("^(a|b)+c*$")
-  checkState(t, !r.RunSimple("abd"), "not a valid match")
-  checkState(t, r.RunSimple("a"), "basic string should match")
-  checkState(t, !r.RunSimple(""), "empty string should not match")
-  checkState(t, r.RunSimple("abcccc"), "longer string should match")
+  checkState(t, r.NumAlts() == 1, "simple re should have single alt")
+  checkState(t, !r.Match("abd"), "not a valid match")
+  checkState(t, r.Match("a"), "basic string should match")
+  checkState(t, !r.Match(""), "empty string should not match")
+  checkState(t, r.Match("abcccc"), "longer string should match")
 
   r = MustParse("(\\w*)\\s*(\\w*)")
-  ok, res := r.RunSubMatch("zing hello there")
-  checkState(t, ok, "should match generally")
+  res := r.MatchIndex("zing hello there")
   checkIntSlice(t, []int{0, 10, 0, 4, 5, 10}, res, "did not match first two words as expected")
 
   r = MustParse(".*?(\\w+)$")
-  ok, res = r.RunSubMatch("zing hello there")
-  checkState(t, ok, "should match generally")
+  res = r.MatchIndex("zing hello there")
   checkIntSlice(t, []int{0, 16, 11, 16}, res, "did not match last word as expected")
+
+  res = r.MatchIndex("\n")
+  checkIntSlice(t, res, nil, "should return nil on failed match")
 }
 
 // Test parsing an invalid RE returns an error.
@@ -72,64 +77,64 @@ func TestInvalidRe(t *testing.T) {
 // Test behaviour related to character classes expressed within [...].
 func TestCharClass(t *testing.T) {
   r := MustParse("^[\t[:word:]]+$") // Match tabs and word characters.
-  checkState(t, r.RunSimple("c"), "non-space should match")
-  checkState(t, !r.RunSimple("c t"), "space should not match")
-  checkState(t, r.RunSimple("c\tt"), "tab should match")
+  checkState(t, r.Match("c"), "non-space should match")
+  checkState(t, !r.Match("c t"), "space should not match")
+  checkState(t, r.Match("c\tt"), "tab should match")
 
   r = MustParse("^[:ascii:]*$")
-  checkState(t, r.RunSimple(""), "nothing should match")
-  checkState(t, r.RunSimple("c"), "ascii should match")
-  checkState(t, !r.RunSimple("Π"), "unicode should not match")
+  checkState(t, r.Match(""), "nothing should match")
+  checkState(t, r.Match("c"), "ascii should match")
+  checkState(t, !r.Match("Π"), "unicode should not match")
 
   r = MustParse("^\\pN$")
-  checkState(t, r.RunSimple("〩"), "character from Nl should match")
-  checkState(t, r.RunSimple("¾"), "character from Nu should match")
+  checkState(t, r.Match("〩"), "character from Nl should match")
+  checkState(t, r.Match("¾"), "character from Nu should match")
 
   r = MustParse("^\\p{Nl}$")
-  checkState(t, r.RunSimple("〩"), "character from Nl should match")
-  checkState(t, !r.RunSimple("¾"), "character from Nu should not match")
+  checkState(t, r.Match("〩"), "character from Nl should match")
+  checkState(t, !r.Match("¾"), "character from Nu should not match")
 
   r = MustParse("^[^. ]$")
-  checkState(t, r.RunSimple("\n"), "not everything should match \\n")
-  checkState(t, !r.RunSimple(" "), "should match only \\n")
+  checkState(t, r.Match("\n"), "not everything should match \\n")
+  checkState(t, !r.Match(" "), "should match only \\n")
 
   r = MustParse("^[.\n]$")
-  checkState(t, r.RunSimple("\n"), "should match \\n")
+  checkState(t, r.Match("\n"), "should match \\n")
 
   r = MustParse("^\\W$")
-  checkState(t, !r.RunSimple("a"), "should not match word char")
-  checkState(t, r.RunSimple("!"), "should match non-word")
+  checkState(t, !r.Match("a"), "should not match word char")
+  checkState(t, r.Match("!"), "should match non-word")
 
   r = MustParse("^[abc\\W]$")
-  checkState(t, r.RunSimple("a"), "should match 'a'")
-  checkState(t, r.RunSimple("!"), "should match '!'")
-  checkState(t, !r.RunSimple("d"), "should not match 'd'")
+  checkState(t, r.Match("a"), "should match 'a'")
+  checkState(t, r.Match("!"), "should match '!'")
+  checkState(t, !r.Match("d"), "should not match 'd'")
 
   r = MustParse("^[^abc\\W]$")
-  checkState(t, !r.RunSimple("a"), "should not match 'a'")
-  checkState(t, !r.RunSimple("%"), "should not match non-word char")
-  checkState(t, r.RunSimple("d"), "should match 'd'")
+  checkState(t, !r.Match("a"), "should not match 'a'")
+  checkState(t, !r.Match("%"), "should not match non-word char")
+  checkState(t, r.Match("d"), "should match 'd'")
 
   r = MustParse("^[\\w\\D]$")
-  checkState(t, r.RunSimple("a"), "should match regular char 'a'")
-  checkState(t, r.RunSimple("2"), "should still match number '2', caught by \\w")
+  checkState(t, r.Match("a"), "should match regular char 'a'")
+  checkState(t, r.Match("2"), "should still match number '2', caught by \\w")
 
   r = MustParse("^[\\[-\\]]$")
-  checkState(t, r.RunSimple("]"), "should match ']'")
-  checkState(t, r.RunSimple("["), "should match '['")
-  checkState(t, r.RunSimple("\\"), "should match '\\', between [ and ]")
+  checkState(t, r.Match("]"), "should match ']'")
+  checkState(t, r.Match("["), "should match '['")
+  checkState(t, r.Match("\\"), "should match '\\', between [ and ]")
 }
 
 // Test regexp generated by escape sequences (e.g. \n, \. etc).
 func TestEscapeSequences(t *testing.T) {
   r := MustParse("^\\.\n\\044$") // Match '.\n$'
-  checkState(t, r.RunSimple(".\n$"), "should match")
-  checkState(t, !r.RunSimple(" \n$"), "space should not match")
-  checkState(t, !r.RunSimple("\n\n$"), ". does not match \n by default")
-  checkState(t, !r.RunSimple(".\n"), "# should not be treated as end char")
+  checkState(t, r.Match(".\n$"), "should match")
+  checkState(t, !r.Match(" \n$"), "space should not match")
+  checkState(t, !r.Match("\n\n$"), ". does not match \n by default")
+  checkState(t, !r.Match(".\n"), "# should not be treated as end char")
 
   r = MustParse("^\\x{03a0}\\x25$") // Match 'Π%'.
-  checkState(t, r.RunSimple("Π%"), "should match pi+percent")
+  checkState(t, r.Match("Π%"), "should match pi+percent")
 
   r, err := Parse("^\\Π$")
   checkState(t, err != nil && r == nil,
@@ -139,93 +144,88 @@ func TestEscapeSequences(t *testing.T) {
 // Tests string literals between \Q...\E.
 func TestStringLiteral(t *testing.T) {
   r := MustParse("^\\Qhello\\E$")
-  checkState(t, r.RunSimple("hello"), "should match hello")
+  checkState(t, r.Match("hello"), "should match hello")
 
   r = MustParse("^\\Q.$\\\\E$") // match ".$\\"
-  checkState(t, r.RunSimple(".$\\"), "should match")
-  checkState(t, !r.RunSimple(" $\\"), "should not match")
+  checkState(t, r.Match(".$\\"), "should match")
+  checkState(t, !r.Match(" $\\"), "should not match")
 
   r = MustParse("^a\\Q\\E*b$") // match absolutely nothing between 'ab'
-  checkState(t, r.RunSimple("ab"), "should match")
-  checkState(t, !r.RunSimple("acb"), "should not match")
+  checkState(t, r.Match("ab"), "should match")
+  checkState(t, !r.Match("acb"), "should not match")
 }
 
 // Test closure expansion types, such as {..}, ?, +, * etc.
 func TestClosureExpansion(t *testing.T) {
   r := MustParse("^za?$")
-  checkState(t, r.RunSimple("z"), "should match none")
-  checkState(t, r.RunSimple("za"), "should match single")
-  checkState(t, !r.RunSimple("zaa"), "should not match more")
+  checkState(t, r.Match("z"), "should match none")
+  checkState(t, r.Match("za"), "should match single")
+  checkState(t, !r.Match("zaa"), "should not match more")
 
   r = MustParse("^a{2,2}$")
-  checkState(t, !r.RunSimple(""), "0 should fail")
-  checkState(t, !r.RunSimple("a"), "1 should fail")
-  checkState(t, r.RunSimple("aa"), "2 should succeed")
-  checkState(t, r.RunSimple("aaa"), "3 should succeed")
-  checkState(t, r.RunSimple("aaaa"), "4 should succeed")
-  checkState(t, !r.RunSimple("aaaaa"), "5 should fail")
+  checkState(t, !r.Match(""), "0 should fail")
+  checkState(t, !r.Match("a"), "1 should fail")
+  checkState(t, r.Match("aa"), "2 should succeed")
+  checkState(t, r.Match("aaa"), "3 should succeed")
+  checkState(t, r.Match("aaaa"), "4 should succeed")
+  checkState(t, !r.Match("aaaaa"), "5 should fail")
 
   r = MustParse("^a{2}$")
-  checkState(t, !r.RunSimple(""), "0 should fail")
-  checkState(t, !r.RunSimple("a"), "1 should fail")
-  checkState(t, r.RunSimple("aa"), "2 should succeed")
-  checkState(t, !r.RunSimple("aaa"), "3 should fail")
+  checkState(t, !r.Match(""), "0 should fail")
+  checkState(t, !r.Match("a"), "1 should fail")
+  checkState(t, r.Match("aa"), "2 should succeed")
+  checkState(t, !r.Match("aaa"), "3 should fail")
 
   r = MustParse("^a{3,}$")
-  checkState(t, !r.RunSimple("aa"), "2 should fail")
-  checkState(t, r.RunSimple("aaa"), "3 should succeed")
-  checkState(t, r.RunSimple("aaaaaa"), "more should succeed")
+  checkState(t, !r.Match("aa"), "2 should fail")
+  checkState(t, r.Match("aaa"), "3 should succeed")
+  checkState(t, r.Match("aaaaaa"), "more should succeed")
 }
 
 // Test specific greedy/non-greedy closure types.
 func TestClosureGreedy(t *testing.T) {
   r := MustParse("^(a{0,2}?)(a*)$")
-  ok, res := r.RunSubMatch("aaa")
-  checkState(t, ok, "should match")
+  res := r.MatchIndex("aaa")
   checkIntSlice(t, []int{0, 3, 0, 0, 0, 3}, res, "did not match expected")
 
   r = MustParse("^(a{0,2})?(a*)$")
-  ok, res = r.RunSubMatch("aaa")
-  checkState(t, ok, "should match")
+  res = r.MatchIndex("aaa")
   checkIntSlice(t, []int{0, 3, 0, 2, 2, 3}, res, "did not match expected")
 
   r = MustParse("^(a{2,}?)(a*)$")
-  ok, res = r.RunSubMatch("aaa")
-  checkState(t, ok, "should match")
+  res = r.MatchIndex("aaa")
   checkIntSlice(t, []int{0, 3, 0, 2, 2, 3}, res, "did not match expected")
 }
 
 // Test simple left/right matchers.
 func TestLeftRight(t *testing.T) {
   r := MustParse("^.\\b.$")
-  checkState(t, r.RunSimple("a "), "left char is word")
-  checkState(t, r.RunSimple(" a"), "right char is word")
-  checkState(t, !r.RunSimple("  "), "not a boundary")
-  checkState(t, !r.RunSimple("aa"), "not a boundary")
+  checkState(t, r.Match("a "), "left char is word")
+  checkState(t, r.Match(" a"), "right char is word")
+  checkState(t, !r.Match("  "), "not a boundary")
+  checkState(t, !r.Match("aa"), "not a boundary")
 }
 
 // Test general flags in sre2.
 func TestFlags(t *testing.T) {
   r := MustParse("^(?i:AbC)zz$")
-  checkState(t, r.RunSimple("abczz"), "success")
-  checkState(t, !r.RunSimple("abcZZ"), "fail, flag should not escape")
-  ok, res := r.RunSubMatch("ABCzz")
-  checkState(t, ok, "should pass")
+  checkState(t, r.Match("abczz"), "success")
+  checkState(t, !r.Match("abcZZ"), "fail, flag should not escape")
+  res := r.MatchIndex("ABCzz")
   checkIntSlice(t, []int{0,5}, res, "should just have a single outer paren")
 
   r = MustParse("^(?U)(a+)(.+)$")
-  ok, res = r.RunSubMatch("aaaabb")
-  checkState(t, ok, "should pass")
+  res = r.MatchIndex("aaaabb")
   checkIntSlice(t, []int{0,6,0,1,1,6}, res, "should be ungreedy")
 
   r = MustParse("^(?i)a*(?-i)b*$")
-  checkState(t, r.RunSimple("AAaaAAaabbbbb"), "success")
-  checkState(t, !r.RunSimple("AAaaAAaaBBBa"), "should fail, flag should not escape")
+  checkState(t, r.Match("AAaaAAaabbbbb"), "success")
+  checkState(t, !r.Match("AAaaAAaaBBBa"), "should fail, flag should not escape")
 
   r = MustParse("(?s)^abc$.^def$")
-  checkState(t, !r.RunSimple("abc\ndef"), "multiline mode not on by default")
+  checkState(t, !r.Match("abc\ndef"), "multiline mode not on by default")
   r = MustParse("(?ms)^abc$.^def$")
-  checkState(t, r.RunSimple("abc\ndef"), "multiline mode works as expected")
+  checkState(t, r.Match("abc\ndef"), "multiline mode works as expected")
 }
 
 // Test the behaviour of rune filters.

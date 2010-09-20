@@ -34,9 +34,10 @@ func main() {
     var alt []int
     for i := 0; i < *runs; i++ {
       if *sub {
-        result, alt = r.RunSubMatch(*s)
+        alt = r.MatchIndex(*s)
+        result = (alt != nil)
       } else {
-        result = r.RunSimple(*s)
+        result = r.Match(*s)
       }
     }
 
@@ -48,7 +49,7 @@ func main() {
     var alt []int
     for i := 0; i < *runs; i++ {
       if *sub {
-        alt = r.FindStringIndex(*s)
+        alt = r.FindStringSubmatchIndex(*s)
         result = (alt != nil)
       } else {
         // NB. This has the same efficiency as FindStringIndex() above, but more closely

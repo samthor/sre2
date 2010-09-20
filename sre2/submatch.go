@@ -49,9 +49,9 @@ func (m *m_submatch) addstate(st *instr, a *altpos) {
   }
 }
 
-// Submatch regexp matcher entry point. Must return both true/false as well
-// as information on all submatches.
-func (r *sregexp) RunSubMatch(src string) (bool, []int) {
+// Submatch regexp matcher entry point. Returns nil if no match found, or an
+// array of submatch locations on success (with the entire match in index 0:1).
+func (r *sregexp) MatchIndex(src string) []int {
   states_alloc := 64
   m := &m_submatch{NewSafeReader(src), make([]pair, 0, states_alloc)}
   m.addstate(r.prog[0], nil)
@@ -94,9 +94,9 @@ func (r *sregexp) RunSubMatch(src string) (bool, []int) {
         }
         a = a.prev
       }
-      return true, alt
+      return alt
     }
   }
 
-  return false, make([]int, 0)
+  return nil
 }
