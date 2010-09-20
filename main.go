@@ -28,8 +28,6 @@ func main() {
   if !*mode {
     // use sre2
     r := sre2.MustParse(*re)
-    r.DebugOut()
-
     result := false
     var alt []int
     for i := 0; i < *runs; i++ {

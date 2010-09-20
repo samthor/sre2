@@ -784,10 +784,17 @@ func cleanup(prog []*instr) []*instr {
   return prog[0:last+1]
 }
 
+// Public interface to a compiled regexp.
+type Re interface {
+  NumAlts() int
+  Match(s string) bool
+  MatchIndex(s string) []int
+}
+
 // Generates a simple, straight-forward NFA. Matches an entire regexp from the
 // given input string. If the regexp could not be parsed, returns a non-nil
 // error string: the regexp will be nil in this case.
-func Parse(src string) (re *sregexp, err *string) {
+func Parse(src string) (re Re, err *string) {
   defer func() {
     if r := recover(); r != nil {
       re = nil // clear re so it can't be used by caller
@@ -801,8 +808,7 @@ func Parse(src string) (re *sregexp, err *string) {
     }
   }()
 
-  re = &sregexp{make([]*instr, 0, 1), 0}
-  p := parser{re, NewSafeReader(".*?(" + src + ").*?"), 0}
+  p := parser{&sregexp{make([]*instr, 0, 1), 0}, NewSafeReader(".*?(" + src + ").*?"), 0}
   begin := p.instr()
   match := p.instr()
   match.mode = kMatch
@@ -817,13 +823,13 @@ func Parse(src string) (re *sregexp, err *string) {
   p.out(begin, start)
   p.out(end, match)
 
-  re.prog = cleanup(re.prog)
-  return
+  p.re.prog = cleanup(p.re.prog)
+  return p.re, nil
 }
 
 // Generates a NFA from the given source. If the regexp could not be parsed,
 // panics with a string error.
-func MustParse(src string) *sregexp {
+func MustParse(src string) Re {
   re, err := Parse(src)
   if err != nil {
     panic(*err)
