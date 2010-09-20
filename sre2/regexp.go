@@ -175,7 +175,8 @@ func (p *parser) flag(flag int) bool {
   if flag < 64 || flag > 127 {
     panic(fmt.Sprintf("can't check flag, out of range: %c", flag))
   }
-  return (p.flags & (1<<byte(flag - 64))) != 0
+//  return (p.flags & (1<<byte(flag - 64))) != 0
+  return (p.flags | (1<<byte(flag))) != 0
 }
 
 // Helper method to connect instr 'from' to instr 'out'.

@@ -221,6 +221,11 @@ func TestFlags(t *testing.T) {
   r = MustParse("^(?i)a*(?-i)b*$")
   checkState(t, r.RunSimple("AAaaAAaabbbbb"), "success")
   checkState(t, !r.RunSimple("AAaaAAaaBBBa"), "should fail, flag should not escape")
+
+  r = MustParse("(?s)^abc$.^def$")
+  checkState(t, !r.RunSimple("abc\ndef"), "multiline mode not on by default")
+  r = MustParse("(?ms)^abc$.^def$")
+  checkState(t, r.RunSimple("abc\ndef"), "multiline mode works as expected")
 }
 
 // Test the behaviour of rune filters.
