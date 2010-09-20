@@ -90,7 +90,7 @@ func TestCharClass(t *testing.T) {
   checkState(t, !r.RunSimple("¾"), "character from Nu should not match")
 
   r = MustParse("^[^. ]$")
-  checkState(t, r.RunSimple("\n"), "should match \\n")
+  checkState(t, r.RunSimple("\n"), "not everything should match \\n")
   checkState(t, !r.RunSimple(" "), "should match only \\n")
 
   r = MustParse("^[.\n]$")
