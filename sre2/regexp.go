@@ -149,7 +149,7 @@ var (
 type parser struct {
   re *sregexp
   src SafeReader
-  flags int64
+  flags int64    // on/off state for flags 64-127 (subtract 64, uses bits)
 }
 
 // Generate a new instruction struct for use in regexp. By default, the instr
@@ -303,7 +303,7 @@ func (p *parser) single_rune() int {
 }
 
 // Consume a single character class and provide an implementation of the
-// runeclass interface. Will consume all characters that are part of definition.
+// RuneFilter interface. Consumes the entire definition.
 func (p *parser) class(within_class bool) (filter RuneFilter) {
   negate := false
   switch p.src.curr() {
@@ -324,9 +324,8 @@ func (p *parser) class(within_class bool) (filter RuneFilter) {
       ascii_class := p.src.literal("[:", ":]")
       if ascii_class[0] == '^' {
         negate = true
-        ascii_class = ascii_class[1:len(ascii_class)]
+        ascii_class = ascii_class[1:]
       }
-
       if filter = MatchAsciiClass(ascii_class); filter == nil {
         panic(fmt.Sprintf("could not identify ascii class: %s", ascii_class))
       }
@@ -334,12 +333,12 @@ func (p *parser) class(within_class bool) (filter RuneFilter) {
       if within_class {
         panic("can't match a [...] class within another class")
       }
-
       if p.src.nextCh() == '^' {
         negate = true
         p.src.nextCh()
       }
 
+      // Consume and merge all valid classes within this [...] block.
       var filters vector.Vector
       for p.src.curr() != ']' {
         filters.Push(p.class(true))
