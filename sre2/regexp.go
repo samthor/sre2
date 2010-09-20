@@ -170,13 +170,13 @@ func (p *parser) instr() *instr {
   return i
 }
 
-// Determine whether the given flag is set.
+// Determine whether the given flag is set. Requires flag in range 64-127,
+// subtracts 64 and checks for bit set in flags int64.
 func (p *parser) flag(flag int) bool {
   if flag < 64 || flag > 127 {
     panic(fmt.Sprintf("can't check flag, out of range: %c", flag))
   }
-//  return (p.flags & (1<<byte(flag - 64))) != 0
-  return (p.flags | (1<<byte(flag))) != 0
+  return (p.flags & (1<<byte(flag - 64))) != 0
 }
 
 // Helper method to connect instr 'from' to instr 'out'.
