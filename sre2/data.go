@@ -80,7 +80,7 @@ func MergeFilter(filters vector.Vector) RuneFilter {
   return func(rune int) bool {
     if len(filters) > 0 {
       for _, raw := range filters {
-        filter, _ := raw.(RuneFilter)
+        filter := raw.(RuneFilter)
         if filter(rune) {
           return true
         }
