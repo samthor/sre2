@@ -1,11 +1,10 @@
-
 package sre2
 
 // This file defines the simple regexp matcher used by sre2. This backs onto
 // a bitset to manage states, and does not record or care about submatches.
 
-// Simple regexp matcher entry point. Just returns true/false for matching re,
-// and completely ignores submatches.
+// Match is the simple regexp matcher entry point. Just returns true/false for
+// matching re, completely ignoring submatches.
 func (r *sregexp) Match(src string) bool {
 	curr := make_obitset(len(r.prog), len(r.prog))
 	next := make_obitset(len(r.prog), len(r.prog))
@@ -53,8 +52,8 @@ func make_obitset(m_state, m_size int) *obitset {
 	return &obitset{make([]int64, bwords), make([]int, 0, m_size)}
 }
 
-// Helper method - just descends through split/alt states and places them all
-// in the given StateSet.
+// addstate descends through split/alt states and places them all in the
+// given obitset.
 func (o *obitset) addstate(p *SafeReader, st *instr) {
 	if st == nil || o.put(st.idx) {
 		return // instr does not exist, or state already in set: fall out
@@ -73,7 +72,7 @@ func (o *obitset) addstate(p *SafeReader, st *instr) {
 	}
 }
 
-// Place the given state into the receiver bits.
+// put places the given state into the obitset.
 func (o *obitset) put(v int) bool {
 	index := v >> 6
 	value := int64(1 << (byte(v) & 63))
@@ -96,7 +95,7 @@ func (o *obitset) put(v int) bool {
 	return true
 }
 
-// Clear the states in the receiver bito.
+// clear resets the obitset to be re-used.
 func (o *obitset) clear() {
 	for i := 0; i < len(o.bits); i++ {
 		o.bits[i] = 0
