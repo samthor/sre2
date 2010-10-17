@@ -711,17 +711,17 @@ func cleanup(prog []*instr) []*instr {
   // Detect kSplit recursion. We can remove this and convert it to a single path.
   // This might happen in cases where we loop over some instructions which are
   // not matchers, e.g. \Q\E*.
-  states := NewStateSet(len(prog), len(prog))
   for i := 1; i < len(prog); i++ {
-    states.Clear()
+    states := make(map[int]bool)
     pi := prog[i]
     var fn func(ci *instr) bool
     fn = func(ci *instr) bool {
       if ci != nil && ci.mode == kSplit {
-        if states.Put(ci.idx) {
+        if _, exists := states[ci.idx]; exists {
           // We've found a recursion.
           return true
         }
+        states[ci.idx] = true
         if fn(ci.out) {
           ci.out = nil
         }
