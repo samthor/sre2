@@ -1,4 +1,3 @@
-
 package sre2
 
 type altpos struct {
