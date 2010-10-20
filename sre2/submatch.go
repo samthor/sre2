@@ -1,10 +1,9 @@
 package sre2
 
 type altpos struct {
-	alt    int     // alt index
-	is_end bool    // end (true) or begin (false)
-	pos    int     // character pos
-	prev   *altpos // previous in stack
+	pos   int     // position
+	index int     // rune index
+	prev  *altpos // previous in stack
 }
 
 type pair struct {
@@ -22,14 +21,12 @@ func (m *m_submatch) addstate(st *instr, a *altpos) {
 		return // invalid
 	}
 	switch st.mode {
-	case kSplit:
+	case iSplit:
 		m.addstate(st.out, a)
 		m.addstate(st.out1, a)
-	case kAltBegin:
-		m.addstate(st.out, &altpos{st.alt, false, m.parser.npos(), a})
-	case kAltEnd:
-		m.addstate(st.out, &altpos{st.alt, true, m.parser.npos(), a})
-	case kBoundaryCase:
+	case iIndexCap:
+		m.addstate(st.out, &altpos{st.cid, m.parser.npos(), a})
+	case iBoundaryCase:
 		if st.matchBoundaryMode(m.parser.curr(), m.parser.peek()) {
 			m.addstate(st.out, a)
 		}
@@ -77,8 +74,8 @@ func (r *sregexp) MatchIndex(src string) []int {
 	// Search for a terminal state (in current states). If one is found, allocate
 	// and return submatch information for those encountered.
 	for _, p := range curr {
-		if r.prog[p.state].mode == kMatch {
-			alt := make([]int, r.alts*2)
+		if r.prog[p.state].mode == iMatch {
+			alt := make([]int, r.caps*2)
 			for i := 0; i < len(alt); i++ {
 				// if a particular submatch is not encountered, return -1.
 				alt[i] = -1
@@ -86,12 +83,8 @@ func (r *sregexp) MatchIndex(src string) []int {
 
 			a := p.alt
 			for a != nil {
-				pos := (a.alt * 2)
-				if a.is_end {
-					pos += 1
-				}
-				if alt[pos] == -1 {
-					alt[pos] = a.pos
+				if alt[a.pos] == -1 {
+					alt[a.pos] = a.index
 				}
 				a = a.prev
 			}

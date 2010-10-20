@@ -32,7 +32,7 @@ func (r *sregexp) Match(src string) bool {
 
 	// search for success state
 	for _, st := range curr.states {
-		if r.prog[st].mode == kMatch {
+		if r.prog[st].mode == iMatch {
 			return true
 		}
 	}
@@ -59,13 +59,13 @@ func (o *obitset) addstate(p *SafeReader, st *instr) {
 		return // instr does not exist, or state already in set: fall out
 	}
 	switch st.mode {
-	case kSplit:
+	case iSplit:
 		o.addstate(p, st.out)
 		o.addstate(p, st.out1)
-	case kAltBegin, kAltEnd:
+	case iIndexCap:
 		// ignore, just walk over
 		o.addstate(p, st.out)
-	case kBoundaryCase:
+	case iBoundaryCase:
 		if st.matchBoundaryMode(p.curr(), p.peek()) {
 			o.addstate(p, st.out)
 		}
