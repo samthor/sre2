@@ -235,7 +235,7 @@ func (p *parser) alt(cname string, capture bool) (start *instr, end *instr) {
 	// Optionally mark this as a capturing group.
 	if capture {
 		alt_begin.mode = iIndexCap
-		alt_begin.cid = p.re.caps*2
+		alt_begin.cid = p.re.caps * 2
 		alt_begin.cname = cname
 
 		end.mode = iIndexCap
