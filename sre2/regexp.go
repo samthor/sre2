@@ -36,8 +36,8 @@ func (r *sregexp) DebugOut() {
 	}
 }
 
-// NumCaps returns the number of marked caps [()'s] in this regexp.
-func (r *sregexp) NumCaps() int {
+// NumSubexps returns the number of paired subexpressions [()'s] in this regexp.
+func (r *sregexp) NumSubexps() int {
 	// we always have an outer () to match the whole re, subtract it
 	return r.caps - 1
 }
@@ -811,7 +811,7 @@ func cleanup(prog []*instr) []*instr {
 
 // Public interface to a compiled regexp.
 type Re interface {
-	NumCaps() int
+	NumSubexps() int
 	Match(s string) bool
 	MatchIndex(s string) []int
 }
