@@ -23,10 +23,13 @@ import (
 	"unicode"
 )
 
-// sregexp struct. Simple, just a list of states and a number of alts.
+// sregexp struct. Just a list of states and a number of subexpressions.
 type sregexp struct {
-	prog []*instr // list of states
-	caps int      // number of marked caps [()'s] in this regexp
+	prog []*instr // List of instruction states that comprise this RE.
+
+	// Number of paired subexpressions [()'s], including the outermost brackets
+	// (i.e. which match the entire string).
+	caps int
 }
 
 // DebugOut writes the given regexp to Stderr, for debugging.
