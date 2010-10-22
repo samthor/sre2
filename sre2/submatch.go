@@ -6,7 +6,7 @@ package sre2
 // store the start and end index of the nth subexpression. If no match is
 // found, returns nil.
 func (r *sregexp) MatchIndex(src string) []int {
-	states_alloc := 64
+	states_alloc := len(r.prog)
 	m := &m_submatch{NewSafeReader(src), make([]pair, 0, states_alloc)}
 	m.addstate(r.prog[0], nil)
 	curr := m.next
@@ -92,14 +92,23 @@ func (m *m_submatch) addstate(st *instr, a *cappos) {
 			m.addstate(st.out, a)
 		}
 	default:
+		// NB. This maintains only the *first* possible capture information for
+		// any current state within this RE. AFAIK this emulates Go's existing
+		// regexp module. It's useless to keep more, anyway, considering we only
+		// return the first found option when we reach the iMatch state.
+
+		// TODO: speed this up with a bitset
+		for _, p := range m.next {
+			if p.state == st.idx {
+				return
+			}
+		}
+
 		// terminal, store (s.idx, altpos) in state
 		// note that s.idx won't always be unique (but if both are equal, we could use this)
 		pos := len(m.next)
 		if pos == cap(m.next) {
-			// out of storage, grow to hold onto more states
-			hold := m.next
-			m.next = make([]pair, pos, pos*2)
-			copy(m.next, hold)
+			panic("should never hit this cap")
 		}
 		m.next = m.next[0 : pos+1]
 		m.next[pos] = pair{st.idx, a}

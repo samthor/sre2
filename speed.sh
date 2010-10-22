@@ -1,11 +1,11 @@
 #!/bin/bash
 # Simple speed test for SRE2.
 
-RE="(a|(b))+"
-STR="aba"
+RE=".*(a|(b))+(\t*).+"
+STR="aba\thello"
 RUNS=100000
 
-CMD="./main -runs=$RUNS -re=$RE -s=$STR"
+CMD="./main -runs=$RUNS -re=\"$RE\" -s=\"$STR\""
 
 make
 if [ $? != 0 ]; then
@@ -13,22 +13,24 @@ if [ $? != 0 ]; then
 fi
 echo
 echo "RUNS=$RUNS RE=$RE STR=$STR"
+echo "CMD=$CMD"
 echo
 
-# On 2.53ghz Core 2 Duo: ~0.50
+
+# On 2.53ghz Core 2 Duo: ~1.20
 echo "==sre2 simple (fast, no submatches and uses bitset for states)"
-time -p $CMD 2>/dev/null >/dev/null
+time -p $CMD #2>/dev/null >/dev/null
 echo
 
-# On 2.53ghz Core 2 Duo: ~1.32
+# On 2.53ghz Core 2 Duo: ~2.00
 echo "==sre2 submatch (slow, abuse of gc for states)"
-time -p $CMD -sub 2>/dev/null >/dev/null
+time -p $CMD -sub #2>/dev/null >/dev/null
 echo
 
 # NB: Go's regexp module has the same underlying code whether we care about
 # submatches or not. This might change in the future.
-# On 2.53ghz Core 2 Duo: ~0.87
+# On 2.53ghz Core 2 Duo: ~4.05
 echo "==go regexp (medium speed, always cares about submatches with good gc)"
-time -p $CMD -m >/dev/null
+time -p $CMD -sub -m #>/dev/null
 echo
 
