@@ -16,7 +16,6 @@ echo "RUNS=$RUNS RE=$RE STR=$STR"
 echo "CMD=$CMD"
 echo
 
-
 # On 2.53ghz Core 2 Duo: ~1.20
 echo "==sre2 simple (fast, no submatches and uses bitset for states)"
 time -p $CMD #2>/dev/null >/dev/null
