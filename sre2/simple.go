@@ -6,8 +6,8 @@ package sre2
 // Match is the simple regexp matcher entry point. Just returns true/false for
 // matching re, completely ignoring submatches.
 func (r *sregexp) Match(src string) bool {
-	curr := make_obitset(len(r.prog), len(r.prog))
-	next := make_obitset(len(r.prog), len(r.prog))
+	curr := makeStateList(len(r.prog))
+	next := makeStateList(len(r.prog))
 	parser := NewSafeReader(src)
 
 	// always start with state zero
@@ -39,22 +39,23 @@ func (r *sregexp) Match(src string) bool {
 	return false
 }
 
-// Underlying structure for storing and using ordered set of integer states.
-type obitset struct {
+// stateList is used by Match() to efficiently maintain an ordered list of
+// current/next regexp integer states.
+type stateList struct {
 	bits   []int64
 	states []int
 }
 
 // Build a new ordered bitset for use by at most m_size states, each with a
 // maximum value of m_state.
-func make_obitset(m_state, m_size int) *obitset {
-	bwords := (m_state + 63) >> 6
-	return &obitset{make([]int64, bwords), make([]int, 0, m_size)}
+func makeStateList(states int) *stateList {
+	bwords := (states + 63) >> 6
+	return &stateList{make([]int64, bwords), make([]int, 0, states)}
 }
 
 // addstate descends through split/alt states and places them all in the
-// given obitset.
-func (o *obitset) addstate(p *SafeReader, st *instr) {
+// given stateList.
+func (o *stateList) addstate(p *SafeReader, st *instr) {
 	if st == nil || o.put(st.idx) {
 		return // instr does not exist, or state already in set: fall out
 	}
@@ -72,8 +73,9 @@ func (o *obitset) addstate(p *SafeReader, st *instr) {
 	}
 }
 
-// put places the given state into the obitset.
-func (o *obitset) put(v int) bool {
+// put places the given state into the stateList. Returns true if the state was
+// previously set, and false if it was not.
+func (o *stateList) put(v int) bool {
 	index := v >> 6
 	value := int64(1 << (byte(v) & 63))
 
@@ -95,8 +97,8 @@ func (o *obitset) put(v int) bool {
 	return true
 }
 
-// clear resets the obitset to be re-used.
-func (o *obitset) clear() {
+// clear resets the stateList to be re-used.
+func (o *stateList) clear() {
 	for i := 0; i < len(o.bits); i++ {
 		o.bits[i] = 0
 	}
