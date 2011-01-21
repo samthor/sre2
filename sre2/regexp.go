@@ -159,7 +159,9 @@ func (s *instr) matchBoundaryMode(left int, right int) bool {
 		return right == -1 || right == '\n'
 	case bWordBoundary, bNotWordBoundary:
 		// TODO: This is ASCII-only at this point.
-		wb := (unicode.Is(_word, left) && unicode.Is(_whitespace, right)) || (unicode.Is(_whitespace, left) && unicode.Is(_word, right))
+		word_range := perl_groups['w']
+		whitespace_range := perl_groups['s']
+		wb := (unicode.Is(word_range, left) && unicode.Is(whitespace_range, right)) || (unicode.Is(whitespace_range, left) && unicode.Is(word_range, right))
 		if s.lr == bWordBoundary {
 			return wb
 		} else {
@@ -307,7 +309,7 @@ func (p *parser) single_rune() int {
 		p.src.nextCh()
 		p.src.nextCh()
 		return rune
-	} else if unicode.Is(_punct, p.src.peek()) {
+	} else if unicode.Is(posix_groups["punct"], p.src.peek()) {
 		// Allow punctuation to be blindly escaped.
 		rune := p.src.nextCh()
 		p.src.nextCh()

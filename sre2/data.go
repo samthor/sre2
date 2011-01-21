@@ -67,7 +67,7 @@ func MatchUnicodeClass(class string) RuneFilter {
 // Generate a RuneFilter matching a valid ASCII class. If no matching class
 // is found, then this method will return nil.
 func MatchAsciiClass(class string) RuneFilter {
-	r, found := ASCII[class]
+	r, found := posix_groups[class]
 	if found {
 		return func(rune int) bool {
 			return unicode.Is(r, rune)
