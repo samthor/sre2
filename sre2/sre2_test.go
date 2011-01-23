@@ -238,12 +238,17 @@ func TestRuneFilter(t *testing.T) {
 	filter = MatchRuneRange('A', 'Z')
 	checkState(t, filter('A'), "should match rune 'A' in range")
 	checkState(t, filter('B'), "should match rune 'B' in range")
+	checkState(t, !filter('a'), "should not match rune 'a', is lowercase")
+
+	filter = filter.ignoreCase()
+	checkState(t, filter('a'), "should match rune 'a', case ignored")
+	checkState(t, filter('A'), "should still match rune 'A', case ignored")
 
 	filter = MatchUnicodeClass("Greek")
 	checkState(t, filter('Ω'), "should match omega")
 	checkState(t, !filter('Z'), "should not match regular latin rune")
 
-	filter = MatchUnicodeClass("Cyrillic").Not()
+	filter = MatchUnicodeClass("Cyrillic").not()
 	checkState(t, filter('%'), "should match a random non-Cyrillic rune")
 	checkState(t, !filter('Ӄ'), "should not match Cyrillic rune")
 }

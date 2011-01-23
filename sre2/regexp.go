@@ -355,14 +355,19 @@ func (p *parser) class(within_class bool) (filter RuneFilter) {
 		p.src.nextCh()
 	case '[':
 		if p.src.peek() == ':' {
-			// Match an ASCII class name.
-			ascii_class := p.src.literal("[:", ":]")
-			if ascii_class[0] == '^' {
+			// Match an ASCII/POSIX class name.
+			name := p.src.literal("[:", ":]")
+			if name[0] == '^' {
 				negate = true
-				ascii_class = ascii_class[1:]
+				name = name[1:]
 			}
-			if filter = MatchAsciiClass(ascii_class); filter == nil {
-				panic(fmt.Sprintf("could not identify ascii class: %s", ascii_class))
+
+			ranges, ok := posix_groups[name]
+			if !ok {
+				panic(fmt.Sprintf("could not identify ascii/posix class: %s", name))
+			}
+			filter = func(rune int) bool {
+				return unicode.Is(ranges, rune)
 			}
 		} else {
 			if within_class {
@@ -383,36 +388,27 @@ func (p *parser) class(within_class bool) (filter RuneFilter) {
 		}
 	case '\\':
 		// Match some escaped character or escaped combination.
-		switch p.src.peek() {
-		case 'p', 'P':
+		if p.src.peek() == 'p' || p.src.peek() == 'P' {
 			// Match a Unicode class name.
 			negate = (p.src.nextCh() == 'P')
 			unicode_class := fmt.Sprintf("%c", p.src.nextCh())
 			if unicode_class[0] == '{' {
 				unicode_class = p.src.literal("{", "}")
 			} else {
-				p.src.nextCh() // Step over the end of the hex code.
+				p.src.nextCh() // move past the single class description
 			}
 
 			// Find and return the class.
 			if filter = MatchUnicodeClass(unicode_class); filter == nil {
 				panic(fmt.Sprintf("could not identify unicode class: %s", unicode_class))
 			}
-		case 'd', 'D':
-			// Match digits.
-			negate = (p.src.nextCh() == 'D')
+		} else if ranges, ok := perl_groups[unicode.ToLower(p.src.peek())]; ok {
+			// We've found a Perl group.
+			negate = unicode.IsUpper(p.src.nextCh())
 			p.src.nextCh()
-			filter = MatchUnicodeClass("Nd")
-		case 's', 'S':
-			// Match whitespace.
-			negate = (p.src.nextCh() == 'S')
-			p.src.nextCh()
-			filter = MatchAsciiClass("whitespace")
-		case 'w', 'W':
-			// Match word characters.
-			negate = (p.src.nextCh() == 'W')
-			p.src.nextCh()
-			filter = MatchAsciiClass("word")
+			filter = func(rune int) bool {
+				return unicode.Is(ranges, rune)
+			}
 		}
 	}
 
@@ -435,7 +431,7 @@ func (p *parser) class(within_class bool) (filter RuneFilter) {
 	}
 
 	if negate {
-		return filter.Not()
+		return filter.not()
 	}
 	return filter
 }
@@ -580,7 +576,7 @@ func (p *parser) term() (start *instr, end *instr) {
 
 	if p.flag('i') {
 		// Mark this class as case-insensitive.
-		start.rune = start.rune.IgnoreCase()
+		start.rune = start.rune.ignoreCase()
 	}
 
 	return start, start
