@@ -114,4 +114,3 @@ func (m *m_submatch) addstate(st *instr, a *cappos) {
 		m.next[pos] = pair{st.idx, a}
 	}
 }
-

@@ -10,14 +10,14 @@ import (
 type RuneFilter func(rune int) bool
 
 // Generate a RuneFilter matching a single rune.
-func MatchRune(to_match int) RuneFilter {
+func matchRune(to_match int) RuneFilter {
 	return func(rune int) bool {
 		return rune == to_match
 	}
 }
 
 // Generate a RuneFilter matching a range of runes, assumes from <= to.
-func MatchRuneRange(from int, to int) RuneFilter {
+func matchRuneRange(from int, to int) RuneFilter {
 	return func(rune int) bool {
 		return rune >= from && rune <= to
 	}
@@ -27,7 +27,7 @@ func MatchRuneRange(from int, to int) RuneFilter {
 // are found, then this method will return nil.
 // Note that if just a single character is given, Categories will be searched
 // for this as a prefix (so that 'N' will match 'Nd', 'Nl', 'No' etc).
-func MatchUnicodeClass(class string) RuneFilter {
+func matchUnicodeClass(class string) RuneFilter {
 	found := false
 	var match vector.Vector
 	if len(class) == 1 {
@@ -62,24 +62,6 @@ func MatchUnicodeClass(class string) RuneFilter {
 		}
 	}
 	return nil
-}
-
-// Generate a RuneFilter that OR's together the given RuneFilter instances.
-func MergeFilter(filters vector.Vector) RuneFilter {
-	return func(rune int) bool {
-		if len(filters) > 0 {
-			for _, raw := range filters {
-				filter := raw.(RuneFilter)
-				if filter(rune) {
-					return true
-				}
-			}
-			return false
-		}
-
-		// If we haven't merged any filters, don't match (i.e. [] = nothing)
-		return false
-	}
 }
 
 // Generate and return a new, inverse RuneFilter from the argument.

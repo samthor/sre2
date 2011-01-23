@@ -15,7 +15,6 @@ package sre2
 // which panics on an error condition.
 
 import (
-	"container/vector"
 	"fmt"
 	"os"
 	"strconv"
@@ -379,12 +378,19 @@ func (p *parser) class(within_class bool) (filter RuneFilter) {
 			}
 
 			// Consume and merge all valid classes within this [...] block.
-			var filters vector.Vector
+			filters := make([]RuneFilter, 0)
 			for p.src.curr() != ']' {
-				filters.Push(p.class(true))
+				filters = append(filters, p.class(true))
+			}
+			filter = func(rune int) bool {
+				for _, f := range filters {
+					if f(rune) {
+						return true
+					}
+				}
+				return false
 			}
 			p.src.nextCh() // Move over final ']'.
-			filter = MergeFilter(filters)
 		}
 	case '\\':
 		// Match some escaped character or escaped combination.
@@ -399,7 +405,7 @@ func (p *parser) class(within_class bool) (filter RuneFilter) {
 			}
 
 			// Find and return the class.
-			if filter = MatchUnicodeClass(unicode_class); filter == nil {
+			if filter = matchUnicodeClass(unicode_class); filter == nil {
 				panic(fmt.Sprintf("could not identify unicode class: %s", unicode_class))
 			}
 		} else if ranges, ok := perl_groups[unicode.ToLower(p.src.peek())]; ok {
@@ -424,9 +430,9 @@ func (p *parser) class(within_class bool) (filter RuneFilter) {
 			if rune_high < rune {
 				panic(fmt.Sprintf("unexpected range: %c >= %c", rune, rune_high))
 			}
-			filter = MatchRuneRange(rune, rune_high)
+			filter = matchRuneRange(rune, rune_high)
 		} else {
-			filter = MatchRune(rune)
+			filter = matchRune(rune)
 		}
 	}
 
@@ -538,10 +544,10 @@ func (p *parser) term() (start *instr, end *instr) {
 			literal := p.src.literal("\\Q", "\\E")
 			start = p.instr()
 			end = start
-			for _, ch := range literal {
+			for _, rune := range literal {
 				instr := p.instr()
 				instr.mode = iRuneClass
-				instr.rune = MatchRune(ch)
+				instr.rune = matchRune(rune)
 				p.out(end, instr)
 				end = instr
 			}
@@ -641,7 +647,7 @@ func (p *parser) closure() (start *instr, end *instr) {
 				opt, _ = strconv.Atoi(parts[1])
 				opt -= req // {n,x} means: between n and x matches, not n req and x opt.
 				if opt < 0 {
-				  panic("{n,x}: x must be greater or equal to n")
+					panic("{n,x}: x must be greater or equal to n")
 				}
 			} else {
 				opt = -1
