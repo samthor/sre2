@@ -639,6 +639,10 @@ func (p *parser) closure() (start *instr, end *instr) {
 			if len(parts[1]) > 0 {
 				// TODO: handle malformed int
 				opt, _ = strconv.Atoi(parts[1])
+				opt -= req // {n,x} means: between n and x matches, not n req and x opt.
+				if opt < 0 {
+				  panic("{n,x}: x must be greater or equal to n")
+				}
 			} else {
 				opt = -1
 			}

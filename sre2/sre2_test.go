@@ -161,7 +161,7 @@ func TestClosureExpansion(t *testing.T) {
 	checkState(t, r.Match("za"), "should match single")
 	checkState(t, !r.Match("zaa"), "should not match more")
 
-	r = MustParse("^a{2,2}$")
+	r = MustParse("^a{2,4}$")
 	checkState(t, !r.Match(""), "0 should fail")
 	checkState(t, !r.Match("a"), "1 should fail")
 	checkState(t, r.Match("aa"), "2 should succeed")
