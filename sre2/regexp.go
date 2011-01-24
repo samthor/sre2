@@ -107,7 +107,7 @@ func (i *instr) String() string {
 			out += fmt.Sprintf(" out1=%d", i.out1.idx)
 		}
 	case iIndexCap:
-		str += fmt.Sprintf("iIndexCap cid=%d", i.cid)
+		str += fmt.Sprintf(" iIndexCap cid=%d", i.cid)
 		if len(i.cname) != 0 {
 			str += fmt.Sprintf(" cname=%s", i.cname)
 		}
@@ -827,6 +827,26 @@ type Re interface {
 	MatchIndex(s string) []int
 }
 
+// Helper method that generates instructions, for this parser, that would
+// match the normal input string ".*?". Returns instructions begin and final,
+// both which may be used in any way the caller likes.
+func (p *parser) makeDotStarOpt() (begin *instr, final *instr) {
+	begin = p.instr()
+	final = p.instr()
+
+	choice := p.instr()
+	p.out(begin, choice)
+	p.out(choice, final)
+
+	rune := p.instr()
+	rune.mode = iRuneClass
+	rune.rune = func(rune int) bool { return true }
+	p.out(choice, rune)
+	p.out(rune, choice)
+
+	return begin, final
+}
+
 // Generates a simple, straight-forward NFA. Matches an entire regexp from the
 // given input string. If the regexp could not be parsed, returns a non-nil
 // error string: the regexp will be nil in this case.
@@ -844,21 +864,30 @@ func Parse(src string) (re Re, err *string) {
 		}
 	}()
 
-	p := parser{&sregexp{make([]*instr, 0, 1), 0}, NewSafeReader(".*?(" + src + ").*?"), 0}
-	begin := p.instr()
-	match := p.instr()
+	p := parser{&sregexp{make([]*instr, 0, 1), 1}, NewSafeReader(src), 0}
+
+	// generate the prefix, ala ".*?("
+	// note that this has to come first, since it represents instruction zero
+	_, prefix := p.makeDotStarOpt()
+	prefix.mode = iIndexCap
+	prefix.cid = 0
+
+	// generate the suffix, ala ").*?" (followed by match)
+	suffix, match := p.makeDotStarOpt()
+	suffix.mode = iIndexCap
+	suffix.cid = 1
 	match.mode = iMatch
 
+	// parse and consume the regexp, placing it between prefix/suffix.
 	p.src.nextCh()
-	start, end := p.regexp()
-
+	re_start, re_end := p.regexp()
 	if p.src.curr() != -1 {
 		panic("could not consume all of regexp!")
 	}
+	p.out(prefix, re_start)
+	p.out(re_end, suffix)
 
-	p.out(begin, start)
-	p.out(end, match)
-
+	// cleanup and return success
 	p.re.prog = cleanup(p.re.prog)
 	return p.re, nil
 }
