@@ -40,7 +40,7 @@ func matchUnicodeClass(class string) RuneFilter {
 		}
 	} else {
 		// Search for the unicode class name inside cats/props/scripts.
-		options := []map[string][]unicode.Range{
+		options := []map[string]*unicode.RangeTable{
 			unicode.Categories, unicode.Properties, unicode.Scripts}
 		for _, option := range options {
 			if r, ok := option[class]; ok {
@@ -53,7 +53,7 @@ func matchUnicodeClass(class string) RuneFilter {
 	if found {
 		return func(rune int) bool {
 			for _, raw := range match {
-				r, _ := raw.([]unicode.Range)
+				r, _ := raw.(*unicode.RangeTable)
 				if unicode.Is(r, rune) {
 					return true
 				}
