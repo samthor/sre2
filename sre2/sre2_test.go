@@ -253,6 +253,13 @@ func TestRuneFilter(t *testing.T) {
 	checkState(t, !filter('Ӄ'), "should not match Cyrillic rune")
 }
 
+// Test complex grouping configuration.
+func TestGroup(t *testing.T) {
+	r := MustParse("^(a)*$")
+	res := r.MatchIndex("aaa")
+	checkIntSlice(t, []int{0, 3, 2, 3}, res, "a should have matched last char")
+}
+
 // Test the SafeParser used by much of the code.
 func TestStringParser(t *testing.T) {
 	src := NewSafeReader("a{bc}d")
