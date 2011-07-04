@@ -1,5 +1,11 @@
 package sre2
 
+// Note: This file is pulled from Go's regexp package, with non-benchmark tests removed. This is
+// useful for comparison with the regexp baseline. Interestingly enough, because these tests all
+// work on very 'small' strings, we're actually slower in most cases.
+// TODO: Add a string prefix matcher (i.e. not as part of the regexp prog), as this seems to be
+// where regexp gets most of its speed gains.
+
 import (
 	"strings"
 	"testing"
