@@ -26,6 +26,8 @@ import (
 type sregexp struct {
 	prog []*instr // List of instruction states that comprise this RE.
 
+	start int // start instr
+
 	// Number of paired subexpressions [()'s], including the outermost brackets
 	// (i.e. which match the entire string).
 	caps int
@@ -825,6 +827,7 @@ type Re interface {
 	NumSubexps() int
 	Match(s string) bool
 	MatchIndex(s string) []int
+	DebugOut()
 }
 
 // Helper method that generates instructions, for this parser, that would
@@ -864,7 +867,7 @@ func Parse(src string) (re Re, err *string) {
 		}
 	}()
 
-	p := parser{&sregexp{make([]*instr, 0, 1), 1}, NewSafeReader(src), 0}
+	p := parser{&sregexp{make([]*instr, 0, 1), -1, 1}, NewSafeReader(src), 0}
 
 	// generate the prefix, ala ".*?("
 	// note that this has to come first, since it represents instruction zero
@@ -889,6 +892,11 @@ func Parse(src string) (re Re, err *string) {
 
 	// cleanup and return success
 	p.re.prog = cleanup(p.re.prog)
+
+	if p.re.prog[0].out1 == nil {
+		p.re.start = p.re.prog[0].out.idx
+	}
+
 	return p.re, nil
 }
 

@@ -15,8 +15,13 @@ func (r *sregexp) run(src string, submatch bool) (success bool, capture []int) {
 	next := makeStateList(len(r.prog))
 	parser := NewSafeReader(src)
 
+	return r._run(curr, next, &parser, src, submatch)
+}
+
+
+func (r *sregexp) _run(curr *stateList, next *stateList, parser *SafeReader, src string, submatch bool) (success bool, capture []int) {
 	// always start with state zero
-	curr.addstate(&parser, r.prog[0], submatch, nil)
+	curr.addstate(parser, r.prog[r.start], submatch, nil)
 
 	for parser.nextCh() != -1 {
 		ch := parser.curr()
@@ -28,7 +33,7 @@ func (r *sregexp) run(src string, submatch bool) (success bool, capture []int) {
 		for _, st := range curr.states {
 			i := r.prog[st.idx]
 			if i.match(ch) {
-				next.addstate(&parser, i.out, submatch, st.capture)
+				next.addstate(parser, i.out, submatch, st.capture)
 			}
 		}
 		curr, next = next, curr
@@ -65,10 +70,6 @@ func makeStateList(states int) *stateList {
 // addstate descends through split/alt states and places them all in the
 // given stateList.
 func (o *stateList) addstate(p *SafeReader, st *instr, submatch bool, capture *captureInfo) {
-	if st == nil || o.put(st.idx, capture) {
-		return // instr does not exist, or state already in set: fall out
-	}
-
 	switch st.mode {
 	case iSplit:
 		o.addstate(p, st.out, submatch, capture)
@@ -82,6 +83,10 @@ func (o *stateList) addstate(p *SafeReader, st *instr, submatch bool, capture *c
 		if st.matchBoundaryMode(p.curr(), p.peek()) {
 			o.addstate(p, st.out, submatch, capture)
 		}
+	case iRuneClass, iMatch:
+		o.put(st.idx, capture)
+	default:
+		panic("unexpected instr")
 	}
 }
 
