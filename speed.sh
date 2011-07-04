@@ -1,8 +1,8 @@
 #!/bin/bash
 # Simple speed test for SRE2.
 
-RE="y"
-STR="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxy"
+RE=".*(a|(b))+(#*).+"
+STR="aba#hello"
 RUNS=100000
 
 CMD="./main -runs=$RUNS -re=$RE -s=$STR"
