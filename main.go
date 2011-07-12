@@ -5,7 +5,7 @@ import (
 	"os"
 	"flag"
 	"regexp"
-	"sre2"
+	"sre2.googlecode.com/hg/sre2"
 	"runtime/pprof"
 )
 
