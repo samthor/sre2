@@ -640,7 +640,7 @@ func (p *parser) closure() (start *instr, end *instr) {
 		req, opt = 1, -1
 	case '{':
 		raw := p.src.literal("{", "}")
-		parts := strings.Split(raw, ",", 2)
+		parts := strings.SplitN(raw, ",", 2)
 		// TODO: handle malformed int
 		req, _ = strconv.Atoi(parts[0])
 		if len(parts) == 2 {
