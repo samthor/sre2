@@ -13,12 +13,12 @@ package sre2
 
 import (
 	"strings"
-	"utf8"
+	"unicode/utf8"
 )
 
 type SafeReader struct {
 	str  string // backing string
-	ch   int    // current ch
+	ch   rune   // current ch
 	opos int    // previous (absolute) position in str, before ch
 	pos  int    // current (absolute) position in str, after ch
 }
@@ -35,22 +35,22 @@ func (r *SafeReader) npos() int {
 
 // Returns the current focus rune in SafeReader. This will be -1 if EOF or if
 // nextCh() has not yet been called.
-func (r *SafeReader) curr() int {
+func (r *SafeReader) curr() rune {
 	return r.ch
 }
 
 // Peek at the next focus rune in SafeReader.
-func (r *SafeReader) peek() int {
+func (r *SafeReader) peek() rune {
 	if r.pos < len(r.str) {
-		rune, _ := utf8.DecodeRuneInString(r.str[r.pos:])
-		return rune
+		r, _ := utf8.DecodeRuneInString(r.str[r.pos:])
+		return r
 	}
 	return -1
 }
 
 // Move forward, and return the next rune. This will return -1 if the string is
 // at EOF.
-func (r *SafeReader) nextCh() int {
+func (r *SafeReader) nextCh() rune {
 	if r.pos < len(r.str) {
 		rune, size := utf8.DecodeRuneInString(r.str[r.pos:])
 		r.ch = rune

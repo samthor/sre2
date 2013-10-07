@@ -92,7 +92,7 @@ var posix_groups = map[string]*unicode.RangeTable{
 	},
 }
 
-var perl_groups = map[int]*unicode.RangeTable{
+var perl_groups = map[rune]*unicode.RangeTable{
 	'd': posix_groups["digit"],
 	'w': posix_groups["word"],
 	's': &unicode.RangeTable{
