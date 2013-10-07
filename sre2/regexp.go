@@ -87,7 +87,7 @@ type instr struct {
 	lr boundaryMode
 
 	// rune class to match against, for iRuneClass
-	rune RuneFilter
+	rf RuneFilter
 
 	// identifier of submatch for iIndexCap
 	cid   int    // numbered index
@@ -131,7 +131,7 @@ func (i *instr) String() string {
 		}
 		str += fmt.Sprintf(" iBoundaryCase [%s]", mode)
 	case iRuneClass:
-		str += fmt.Sprint(" iRuneClass ", i.rune)
+		str += fmt.Sprint(" iRuneClass ", i.rf)
 	case iMatch:
 		str += " iMatch"
 	}
@@ -139,13 +139,13 @@ func (i *instr) String() string {
 }
 
 // Matcher method for consuming runes, thus only matches iRuneClass.
-func (s *instr) match(rune int) bool {
-	return s.mode == iRuneClass && s.rune(rune)
+func (s *instr) match(r rune) bool {
+	return s.mode == iRuneClass && s.rf(r)
 }
 
 // Matcher method for iBoundaryCase. If either left or right is not within the
 // target string, then -1 should be provided.
-func (s *instr) matchBoundaryMode(left int, right int) bool {
+func (s *instr) matchBoundaryMode(left rune, right rune) bool {
 	if s.mode != iBoundaryCase {
 		return false
 	}
@@ -174,7 +174,7 @@ func (s *instr) matchBoundaryMode(left int, right int) bool {
 
 // Escape constants and their mapping to actual Unicode runes.
 var (
-	ESCAPES = map[int]int{
+	ESCAPES = map[rune]rune{
 		'a': 7, 't': 9, 'n': 10, 'v': 11, 'f': 12, 'r': 13,
 	}
 )
@@ -281,11 +281,11 @@ func (p *parser) alt(cname string, capture bool) (start *instr, end *instr) {
 // Consume a single rune; assumes this is being invoked as the last possible
 // option and will panic if an invalid escape sequence is found. Will return the
 // found rune (as an integer) and with cursor past the entire representation.
-func (p *parser) single_rune() int {
-	if rune := p.src.curr(); rune != '\\' {
+func (p *parser) single_rune() rune {
+	if r := p.src.curr(); r != '\\' {
 		// This is just a regular character; return it immediately.
 		p.src.nextCh()
-		return rune
+		return r
 	}
 
 	if p.src.peek() == 'x' {
@@ -300,21 +300,21 @@ func (p *parser) single_rune() int {
 		}
 
 		// Parse and return the corresponding rune.
-		rune, err := strconv.Btoui64(hex, 16)
+		raw, err := strconv.ParseUint(hex, 16, 32)
 		if err != nil {
 			panic(fmt.Sprintf("couldn't parse hex: %s", hex))
 		}
-		return int(rune)
-	} else if rune := ESCAPES[p.src.peek()]; rune != 0 {
+		return rune(raw)
+	} else if r := ESCAPES[p.src.peek()]; r != 0 {
 		// Literally match '\n', '\r', etc.
 		p.src.nextCh()
 		p.src.nextCh()
-		return rune
+		return r
 	} else if unicode.Is(posix_groups["punct"], p.src.peek()) {
 		// Allow punctuation to be blindly escaped.
-		rune := p.src.nextCh()
+		r := p.src.nextCh()
 		p.src.nextCh()
-		return rune
+		return r
 	} else if unicode.IsDigit(p.src.peek()) {
 		// Match octal character code (begins with digit, up to three digits).
 		oct := ""
@@ -327,11 +327,11 @@ func (p *parser) single_rune() int {
 		}
 
 		// Parse and return the corresponding rune.
-		rune, err := strconv.Btoui64(oct, 8)
+		raw, err := strconv.ParseUint(oct, 8, 32)
 		if err != nil {
 			panic(fmt.Sprintf("couldn't parse oct: %s", oct))
 		}
-		return int(rune)
+		return rune(raw)
 	}
 
 	// This is an escape sequence which does not identify a single rune.
@@ -345,12 +345,12 @@ func (p *parser) class(within_class bool) (filter RuneFilter) {
 	switch p.src.curr() {
 	case '.':
 		if p.flag('s') {
-			filter = func(rune int) bool {
+			filter = func(r rune) bool {
 				return true
 			}
 		} else {
-			filter = func(rune int) bool {
-				return rune != '\n'
+			filter = func(r rune) bool {
+				return r != '\n'
 			}
 		}
 		p.src.nextCh()
@@ -367,8 +367,8 @@ func (p *parser) class(within_class bool) (filter RuneFilter) {
 			if !ok {
 				panic(fmt.Sprintf("could not identify ascii/posix class: %s", name))
 			}
-			filter = func(rune int) bool {
-				return unicode.Is(ranges, rune)
+			filter = func(r rune) bool {
+				return unicode.Is(ranges, r)
 			}
 		} else {
 			if within_class {
@@ -384,9 +384,9 @@ func (p *parser) class(within_class bool) (filter RuneFilter) {
 			for p.src.curr() != ']' {
 				filters = append(filters, p.class(true))
 			}
-			filter = func(rune int) bool {
-				for _, f := range filters {
-					if f(rune) {
+			filter = func(r rune) bool {
+				for _, rf := range filters {
+					if rf(r) {
 						return true
 					}
 				}
@@ -414,8 +414,8 @@ func (p *parser) class(within_class bool) (filter RuneFilter) {
 			// We've found a Perl group.
 			negate = unicode.IsUpper(p.src.nextCh())
 			p.src.nextCh()
-			filter = func(rune int) bool {
-				return unicode.Is(ranges, rune)
+			filter = func(r rune) bool {
+				return unicode.Is(ranges, r)
 			}
 		}
 	}
@@ -549,7 +549,7 @@ func (p *parser) term() (start *instr, end *instr) {
 			for _, rune := range literal {
 				instr := p.instr()
 				instr.mode = iRuneClass
-				instr.rune = matchRune(rune)
+				instr.rf = matchRune(rune)
 				p.out(end, instr)
 				end = instr
 			}
@@ -580,11 +580,11 @@ func (p *parser) term() (start *instr, end *instr) {
 	// Try to consume a rune class.
 	start = p.instr()
 	start.mode = iRuneClass
-	start.rune = p.class(false)
+	start.rf = p.class(false)
 
 	if p.flag('i') {
 		// Mark this class as case-insensitive.
-		start.rune = start.rune.ignoreCase()
+		start.rf = start.rf.ignoreCase()
 	}
 
 	return start, start
@@ -841,11 +841,11 @@ func (p *parser) makeDotStarOpt() (begin *instr, final *instr) {
 	p.out(begin, choice)
 	p.out(choice, final)
 
-	rune := p.instr()
-	rune.mode = iRuneClass
-	rune.rune = func(rune int) bool { return true }
-	p.out(choice, rune)
-	p.out(rune, choice)
+	r := p.instr()
+	r.mode = iRuneClass
+	r.rf = func(r rune) bool { return true }
+	p.out(choice, r)
+	p.out(r, choice)
 
 	return begin, final
 }

@@ -1,25 +1,24 @@
 package sre2
 
 import (
-	"container/vector"
 	"unicode"
 )
 
 // RuneFilter is a unique method signature for matching true/false over a given
 // unicode rune.
-type RuneFilter func(rune int) bool
+type RuneFilter func(r rune) bool
 
 // Generate a RuneFilter matching a single rune.
-func matchRune(to_match int) RuneFilter {
-	return func(rune int) bool {
-		return rune == to_match
+func matchRune(to_match rune) RuneFilter {
+	return func(r rune) bool {
+		return r == to_match
 	}
 }
 
 // Generate a RuneFilter matching a range of runes, assumes from <= to.
-func matchRuneRange(from int, to int) RuneFilter {
-	return func(rune int) bool {
-		return rune >= from && rune <= to
+func matchRuneRange(from rune, to rune) RuneFilter {
+	return func(r rune) bool {
+		return r >= from && r <= to
 	}
 }
 
@@ -29,13 +28,13 @@ func matchRuneRange(from int, to int) RuneFilter {
 // for this as a prefix (so that 'N' will match 'Nd', 'Nl', 'No' etc).
 func matchUnicodeClass(class string) RuneFilter {
 	found := false
-	var match vector.Vector
+  match := make([]*unicode.RangeTable, 0)
 	if len(class) == 1 {
 		// A single character is a shorthand request for any category starting with this.
 		for key, r := range unicode.Categories {
 			if key[0] == class[0] {
 				found = true
-				match.Push(r)
+        match = append(match, r)
 			}
 		}
 	} else {
@@ -45,16 +44,15 @@ func matchUnicodeClass(class string) RuneFilter {
 		for _, option := range options {
 			if r, ok := option[class]; ok {
 				found = true
-				match.Push(r)
+        match = append(match, r)
 			}
 		}
 	}
 
 	if found {
-		return func(rune int) bool {
-			for _, raw := range match {
-				r, _ := raw.(*unicode.RangeTable)
-				if unicode.Is(r, rune) {
+		return func(r rune) bool {
+			for _, table := range match {
+				if unicode.Is(table, r) {
 					return true
 				}
 			}
@@ -65,15 +63,15 @@ func matchUnicodeClass(class string) RuneFilter {
 }
 
 // Generate and return a new, inverse RuneFilter from the argument.
-func (r RuneFilter) not() RuneFilter {
-	return func(rune int) bool {
-		return !r(rune)
+func (rf RuneFilter) not() RuneFilter {
+	return func(r rune) bool {
+		return !rf(r)
 	}
 }
 
 // Generate and return a new RuneFilter, which ignores case, from the argument.
-func (r RuneFilter) ignoreCase() RuneFilter {
-	return func(rune int) bool {
-		return r(unicode.ToLower(rune)) || r(unicode.ToUpper(rune))
+func (rf RuneFilter) ignoreCase() RuneFilter {
+	return func(r rune) bool {
+		return rf(unicode.ToLower(r)) || rf(unicode.ToUpper(r))
 	}
 }
