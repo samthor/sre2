@@ -422,11 +422,9 @@ func (p *parser) class(within_class bool) (filter RuneFilter) {
 
 	if filter == nil {
 		// Match a single rune literal, or a range (when inside a character class).
+		// Note that '-' outside a character class is treated as a literal.
 		rune := p.single_rune()
-		if p.src.curr() == '-' {
-			if !within_class {
-				panic(fmt.Sprintf("can't match a range outside class: %c-%c", rune, p.src.nextCh()))
-			}
+		if p.src.curr() == '-' && within_class {
 			p.src.nextCh() // move over '-'
 			rune_high := p.single_rune()
 			if rune_high < rune {
