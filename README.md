@@ -2,7 +2,7 @@
 
 Implementation of [RE2](https://github.com/google/re2), done natively in Go. Not related to the native implementation. Handles pathological cases with style and does not backtrack.
 
-There are two available matchers: a fast matcher that does not attempt to track submatches, and a slower matcher that does. Internally, sre2 acts only on runes, not bytes; thus, the only missing part of syntax is '\C' (consume a single byte, even in UTF-8 mode).
+There are two available matchers: a fast matcher that does not attempt to track submatches, and a slower matcher that does. Internally, sre2 acts only on runes, not bytes; thus, the only missing part of syntax is `\C` (consume a single byte, even in UTF-8 mode).
 
 The code provides a small library with small suite of tests. The package also includes a tiny main test binary, mostly useful for simple tests and for speed comparisons versus the standard regexp module.
 
