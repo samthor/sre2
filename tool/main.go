@@ -5,8 +5,9 @@ import (
 	"os"
 	"flag"
 	"regexp"
-	"code.google.com/p/sre2/sre2"
 	"runtime/pprof"
+
+	"github.com/samthor/sre2"
 )
 
 var (
