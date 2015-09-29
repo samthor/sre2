@@ -86,7 +86,7 @@ func (r *SafeReader) consume(str string) {
 // Consume a literal that *must* exist, between the given prefix and suffix.
 // Searches for the prefix starting with the current focus rune, and returns
 // this SafeReader focused on the rune directly after the suffix.
-// e.g. "abcde\Qhello\Eblah", with literal("\\Q", "\\E"), returns "hello" 
+// e.g. "abcde\Qhello\Eblah", with literal("\\Q", "\\E"), returns "hello"
 //    focus --^                         and will focus on "b" after "\E".
 func (r *SafeReader) literal(prefix string, suffix string) string {
 	r.consume(prefix)

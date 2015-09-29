@@ -28,13 +28,13 @@ func matchRuneRange(from rune, to rune) RuneFilter {
 // for this as a prefix (so that 'N' will match 'Nd', 'Nl', 'No' etc).
 func matchUnicodeClass(class string) RuneFilter {
 	found := false
-  match := make([]*unicode.RangeTable, 0)
+	match := make([]*unicode.RangeTable, 0)
 	if len(class) == 1 {
 		// A single character is a shorthand request for any category starting with this.
 		for key, r := range unicode.Categories {
 			if key[0] == class[0] {
 				found = true
-        match = append(match, r)
+				match = append(match, r)
 			}
 		}
 	} else {
@@ -44,7 +44,7 @@ func matchUnicodeClass(class string) RuneFilter {
 		for _, option := range options {
 			if r, ok := option[class]; ok {
 				found = true
-        match = append(match, r)
+				match = append(match, r)
 			}
 		}
 	}

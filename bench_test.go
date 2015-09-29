@@ -64,6 +64,7 @@ func BenchmarkMatchClass_InRange(b *testing.B) {
 		}
 	}
 }
+
 /*
 func BenchmarkReplaceAll(b *testing.B) {
 	x := "abcdefghijklmnopqrstuvwxyz"

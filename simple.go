@@ -18,7 +18,6 @@ func (r *sregexp) run(src string, submatch bool) (success bool, capture []int) {
 	return r._run(curr, next, &parser, src, submatch)
 }
 
-
 func (r *sregexp) _run(curr *stateList, next *stateList, parser *SafeReader, src string, submatch bool) (success bool, capture []int) {
 	// always start with state zero
 	curr.addstate(parser, r.prog[r.start], submatch, nil)
